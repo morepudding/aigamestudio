@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, MessageCircle } from "lucide-react";
 import { EVE_ONBOARDING_STEPS, calculateEvePersonalityNuance } from "@/lib/prompts/eveOnboarding";
+import { parseEmotion } from "@/lib/utils/emotion";
 
 const TOTAL_STEPS = 7;
 
@@ -31,6 +32,10 @@ export default function EveOnboardingPage() {
   // Step state
   const [currentStep, setCurrentStep] = useState(0); // 0 = intro, 1-7 = steps, 8 = finalize
   const [stepResults, setStepResults] = useState<StepResult[]>([]);
+
+  // Player identity
+  const [playerName, setPlayerName] = useState("");
+  const [playerNameInput, setPlayerNameInput] = useState("");
 
   // Per-step state
   const [eveMessage, setEveMessage] = useState(""); // intro message only
@@ -90,7 +95,7 @@ export default function EveOnboardingPage() {
       const res = await fetch("/api/ai/onboarding/eve/choices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step, conversationHistory }),
+        body: JSON.stringify({ step, conversationHistory, playerName }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -105,12 +110,47 @@ export default function EveOnboardingPage() {
     } finally {
       setChoicesLoading(false);
     }
-  }, [stepResults]);
+  }, [stepResults, playerName]);
+
+  // ── Handle name submission (step 1) ──────────────────
+  const handleNameSubmit = useCallback(async () => {
+    const name = playerNameInput.trim();
+    if (!name || reactionLoading) return;
+    setPlayerName(name);
+    setSelectedChoice(name);
+    setReactionLoading(true);
+
+    try {
+      const res = await fetch("/api/ai/onboarding/eve/roleplay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: 1,
+          playerChoice: name,
+          conversationHistory: [],
+          playerName: name,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAgentReaction(data.message ?? "");
+      }
+    } catch {
+      setAgentReaction("Bien. On va travailler ensemble, alors.");
+    } finally {
+      setReactionLoading(false);
+    }
+  }, [playerNameInput, reactionLoading]);
 
   // ── Start a step ─────────────────────────────────────
   const startStep = useCallback((step: number) => {
     setCurrentStep(step);
-    if (step <= 6) {
+    if (step === 1) {
+      // Step 1 uses free input — reset state only
+      setStepChoices([]);
+      setSelectedChoice(null);
+      setAgentReaction("");
+    } else if (step <= 6) {
       fetchChoices(step);
     } else if (step === 7) {
       // Generate closing message from Eve
@@ -132,7 +172,7 @@ export default function EveOnboardingPage() {
       const res = await fetch("/api/ai/onboarding/eve/closing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationHistory }),
+        body: JSON.stringify({ conversationHistory, playerName }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -143,7 +183,7 @@ export default function EveOnboardingPage() {
     } finally {
       setClosingLoading(false);
     }
-  }, [stepResults]);
+  }, [stepResults, playerName]);
 
   // ── Handle choice → get Eve reaction ─────────────────
   const handleChoice = useCallback(async (choice: string) => {
@@ -164,6 +204,7 @@ export default function EveOnboardingPage() {
           step: currentStep,
           playerChoice: choice,
           conversationHistory,
+          playerName,
         }),
       });
       if (res.ok) {
@@ -175,7 +216,7 @@ export default function EveOnboardingPage() {
     } finally {
       setReactionLoading(false);
     }
-  }, [reactionLoading, selectedChoice, stepResults, currentStep]);
+  }, [reactionLoading, selectedChoice, stepResults, currentStep, playerName]);
 
   // ── Score signals from a choice ──────────────────────
   const scoreChoice = useCallback((step: number, choice: string): Record<string, number> => {
@@ -197,17 +238,18 @@ export default function EveOnboardingPage() {
 
   // ── Confirm step → move to next ──────────────────────
   const confirmStep = useCallback(() => {
-    if (!selectedChoice || !agentReaction) return;
+    const choice = currentStep === 1 ? playerName : selectedChoice;
+    if (!choice || !agentReaction) return;
 
     const stepData = EVE_ONBOARDING_STEPS[currentStep];
-    const scores = scoreChoice(currentStep, selectedChoice);
+    const scores = scoreChoice(currentStep, choice);
 
     setStepResults((prev) => [
       ...prev,
       {
         step: currentStep,
         theme: stepData.theme,
-        playerChoice: selectedChoice,
+        playerChoice: choice,
         agentReaction,
         scores,
       },
@@ -218,7 +260,7 @@ export default function EveOnboardingPage() {
     } else {
       setCurrentStep(8); // finalize screen
     }
-  }, [selectedChoice, agentReaction, currentStep, scoreChoice, startStep]);
+  }, [playerName, selectedChoice, agentReaction, currentStep, scoreChoice, startStep]);
 
   // ── "On y va" from step 7 ────────────────────────────
   const confirmClosing = useCallback(() => {
@@ -298,6 +340,15 @@ export default function EveOnboardingPage() {
         body: JSON.stringify({ personality_nuance: personalityNuance }),
       });
 
+      // 7. Save player name globally
+      if (playerName) {
+        await fetch("/api/studio-settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "player_name", value: playerName }),
+        });
+      }
+
       setOnboardingComplete(true);
 
       // 7. Generate avatar in background
@@ -315,7 +366,7 @@ export default function EveOnboardingPage() {
     } finally {
       setFinalizing(false);
     }
-  }, [finalizing, stepResults]);
+  }, [finalizing, stepResults, playerName]);
 
   // ─── COMPLETE ───────────────────────────────────────
   if (onboardingComplete) {
@@ -399,7 +450,7 @@ export default function EveOnboardingPage() {
                     Eve arrive…
                   </div>
                 ) : (
-                  <p className="text-white/80 leading-relaxed text-[15px]">{eveMessage}</p>
+                  <p className="text-white/80 leading-relaxed text-[15px]">{parseEmotion(eveMessage).text}</p>
                 )}
               </div>
 
@@ -425,8 +476,42 @@ export default function EveOnboardingPage() {
                 </p>
               </div>
 
-              {/* Choices */}
-              {choicesLoading ? (
+              {/* Step 1: free name input */}
+              {currentStep === 1 && !selectedChoice && (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={playerNameInput}
+                    onChange={(e) => setPlayerNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleNameSubmit()}
+                    placeholder="Ton prénom…"
+                    maxLength={40}
+                    autoFocus
+                    className="w-full px-4 py-4 bg-white/5 border border-white/10 rounded-2xl text-[15px] text-white placeholder-white/30 focus:outline-none focus:border-rose-500/40 focus:bg-white/8 transition-all"
+                  />
+                  <button
+                    onClick={handleNameSubmit}
+                    disabled={!playerNameInput.trim() || reactionLoading}
+                    className="w-full py-4 bg-rose-500/20 hover:bg-rose-500/30 active:scale-[0.98] border border-rose-500/30 disabled:opacity-40 disabled:cursor-not-allowed rounded-2xl text-base font-semibold text-rose-300 transition-all"
+                  >
+                    {reactionLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Un instant…
+                      </span>
+                    ) : "Valider →"}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 1 confirmed: show chosen name */}
+              {currentStep === 1 && selectedChoice && (
+                <div className="px-4 py-4 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-white text-[15px]">
+                  {selectedChoice}
+                </div>
+              )}
+
+              {/* Steps 2-6: Choices */}
+              {currentStep >= 2 && (choicesLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
@@ -458,7 +543,7 @@ export default function EveOnboardingPage() {
                     </button>
                   ))}
                 </div>
-              )}
+              ))}
 
               {/* Eve reaction */}
               {(reactionLoading || agentReaction) && (
@@ -471,7 +556,7 @@ export default function EveOnboardingPage() {
                       <span className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                     </div>
                   ) : (
-                    <p className="text-[15px] text-white/75 leading-relaxed">{agentReaction}</p>
+                    <p className="text-[15px] text-white/75 leading-relaxed">{parseEmotion(agentReaction).text}</p>
                   )}
                 </div>
               )}
@@ -509,7 +594,7 @@ export default function EveOnboardingPage() {
                     <span className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
                 ) : (
-                  <p className="text-[15px] text-white/85 leading-relaxed italic">{closingMessage}</p>
+                  <p className="text-[15px] text-white/85 leading-relaxed italic">{parseEmotion(closingMessage).text}</p>
                 )}
               </div>
 

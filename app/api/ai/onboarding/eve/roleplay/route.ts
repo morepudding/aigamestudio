@@ -12,10 +12,11 @@ interface Message {
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPEN_ROUTE_SERVICE_API_KEY;
   const body = await req.json();
-  const { step, playerChoice, conversationHistory = [] } = body as {
+  const { step, playerChoice, conversationHistory = [], playerName } = body as {
     step: number;
     playerChoice: string;
     conversationHistory: Message[];
+    playerName?: string;
   };
 
   if (!step || !playerChoice) {
@@ -33,7 +34,9 @@ export async function POST(req: NextRequest) {
         .join("\n")
     : "";
 
-  const userPrompt = `${historyText}
+  const nameContext = playerName ? `Le boss s'appelle ${playerName}. Utilise son prénom quand c'est naturel.\n\n` : "";
+
+  const userPrompt = `${nameContext}${historyText}
 
 Le boss vient de répondre : "${playerChoice}"
 

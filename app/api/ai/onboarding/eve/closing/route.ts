@@ -14,7 +14,7 @@ interface Message {
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPEN_ROUTE_SERVICE_API_KEY;
   const body = await req.json();
-  const { conversationHistory = [] } = body as { conversationHistory: Message[] };
+  const { conversationHistory = [], playerName } = body as { conversationHistory: Message[]; playerName?: string };
 
   if (!apiKey) return NextResponse.json({ message: FALLBACK });
 
@@ -26,7 +26,9 @@ export async function POST(req: NextRequest) {
 
   const closingContext = EVE_ONBOARDING_STEPS[7].eveContext;
 
-  const userPrompt = `${historyText}
+  const nameContext = playerName ? `Le boss s'appelle ${playerName}.\n\n` : "";
+
+  const userPrompt = `${nameContext}${historyText}
 
 ${closingContext}
 

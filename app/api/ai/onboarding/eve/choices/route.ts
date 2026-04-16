@@ -24,7 +24,7 @@ function fallbackChoices(step: number): string[] {
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPEN_ROUTE_SERVICE_API_KEY;
   const body = await req.json();
-  const { step, conversationHistory = [] } = body as { step: number; conversationHistory: Message[] };
+  const { step, conversationHistory = [], playerName } = body as { step: number; conversationHistory: Message[]; playerName?: string };
 
   if (!step || step < 1 || step > 6) {
     return NextResponse.json({ choices: fallbackChoices(step) });
@@ -45,7 +45,9 @@ Les réponses doivent sonner naturelles, humaines, en français. Pas de fioritur
         .join("\n")
     : "";
 
-  const userPrompt = `${historyText}
+  const nameContext = playerName ? `Le boss s'appelle ${playerName}.\n` : "";
+
+  const userPrompt = `${nameContext}${historyText}
 
 SITUATION : ${stepData.choiceContext}
 
