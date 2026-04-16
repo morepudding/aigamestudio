@@ -27,20 +27,6 @@ import { supabase } from "@/lib/supabase/client";
 import { MoodRing, type Mood } from "@/components/ui/MoodRing";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceGauge";
 
-// ─── Spontaneous message config ──────────────────────────────────────────────
-const SPONTANEOUS_IDLE_MS = 15 * 60 * 1000; // 15 minutes without activity
-const SPONTANEOUS_CHECK_MS = 60 * 1000;     // check every minute
-const SPONTANEOUS_MAX_PENDING = 2;           // max unanswered spontaneous messages
-
-type SpontaneousType = "idle" | "thinking_of_you" | "personal" | "memory_callback" | "event_reaction";
-
-function pickSpontaneousType(confidenceLevel: number, hasMemories: boolean): SpontaneousType {
-  const types: SpontaneousType[] = ["idle", "thinking_of_you", "personal"];
-  if (hasMemories) types.push("memory_callback");
-  if (confidenceLevel >= 40) types.push("thinking_of_you", "thinking_of_you"); // more weight
-  if (confidenceLevel >= 60) types.push("personal", "memory_callback");
-  return types[Math.floor(Math.random() * types.length)];
-}
 
 interface AgentInfo {
   slug: string;
@@ -92,12 +78,6 @@ export function ChatPanel() {
   const [momentCooldownUntil, setMomentCooldownUntil] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevSlugRef = useRef<string | null>(null);
-
-  // Spontaneous message tracking
-  const lastUserActivityRef = useRef<number>(Date.now());
-  const spontaneousPendingCountRef = useRef<number>(0);
-  const spontaneousTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastSpontaneousRef = useRef<number>(0); // timestamp of last spontaneous message sent
 
   // Load hub (agents + conversations) when panel opens in hub mode
   useEffect(() => {
@@ -216,70 +196,6 @@ export function ChatPanel() {
     };
   }, [activeAgentSlug, isOpen]);
 
-  // Spontaneous message timer — fires when user is idle too long
-  useEffect(() => {
-    if (!agent || !conversation) return;
-
-    // Clear any existing timer
-    if (spontaneousTimerRef.current) clearInterval(spontaneousTimerRef.current);
-
-    spontaneousTimerRef.current = setInterval(async () => {
-      const idleMs = Date.now() - lastUserActivityRef.current;
-      if (idleMs < SPONTANEOUS_IDLE_MS) return;
-
-      // Don't send if already too many unanswered spontaneous messages
-      if (spontaneousPendingCountRef.current >= SPONTANEOUS_MAX_PENDING) return;
-
-      // Require at least 10 minutes between two consecutive spontaneous messages
-      const timeSinceLast = Date.now() - lastSpontaneousRef.current;
-      if (spontaneousPendingCountRef.current > 0 && timeSinceLast < 10 * 60 * 1000) return;
-
-      // Don't send if panel is not open (no point — user won't see it)
-      // (still store in DB for realtime notification)
-
-      const type = pickSpontaneousType(
-        agent.confidence_level ?? 0,
-        agentMemories.length > 0
-      );
-
-      try {
-        const res = await fetch("/api/ai/spontaneous", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: agent.name,
-            role: agent.role,
-            gender: "femme", // default; ideally from agent data
-            personalityPrimary: agent.personality_primary,
-            personalityNuance: agent.personality_nuance ?? "",
-            backstory: agent.backstory ?? "",
-            memories: agentMemories || undefined,
-            mood: agent.mood ?? undefined,
-            confidenceLevel: agent.confidence_level ?? 0,
-            type,
-          }),
-        });
-
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data.message) return;
-
-        await sendMessage(conversation.id, data.message, "agent", "normal");
-        spontaneousPendingCountRef.current += 1;
-        lastSpontaneousRef.current = Date.now();
-        // Reset idle timer so we don't spam immediately after
-        lastUserActivityRef.current = Date.now();
-      } catch {
-        // silent fail
-      }
-    }, SPONTANEOUS_CHECK_MS);
-
-    return () => {
-      if (spontaneousTimerRef.current) clearInterval(spontaneousTimerRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent?.slug, conversation?.id, agentMemories]);
-
   // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -288,11 +204,6 @@ export function ChatPanel() {
   const handleSendMessage = useCallback(
     async (content: string) => {
       if (!agent || !conversation) return;
-
-      // Reset spontaneous tracking on user activity
-      lastUserActivityRef.current = Date.now();
-      spontaneousPendingCountRef.current = 0;
-      lastSpontaneousRef.current = 0;
 
       const userMsg = await sendMessage(conversation.id, content, "user");
       if (userMsg) {

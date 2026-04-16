@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE } from "@/lib/prompts/rules";
+import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, buildTimeContext } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
 
@@ -47,12 +47,17 @@ export async function POST(req: NextRequest) {
   // Build studio context server-side
   const studio = await buildStudioContext();
 
+  const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
+  const timeBlock = buildTimeContext();
+
   const systemPrompt = isReply
     ? `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
 Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
 
 ${studio.full}
+
+${timeBlock}
 
 Tu fais connaissance avec ton boss de façon décontractée.
 
@@ -64,8 +69,9 @@ Sois spécifique : "C'est quoi le dernier truc que t'as regardé ?", "Tu bosses 
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
-- 1 à 2 phrases MAX.
-- 1 émoji max. Tu tutoies ton boss.
+- ${emojiRule}
+- Tu tutoies ton boss.
+${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}${ANTI_HALLUCINATION_RULE}`
     : `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
@@ -73,14 +79,17 @@ Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
 
 ${studio.full}
 
+${timeBlock}
+
 ${memories ? "Tu retrouves ton boss pour une session découverte. Ne repose pas de questions dont tu connais déjà la réponse." : "C'est ta première session découverte avec ton boss."}
 
 Lance la conversation avec une accroche courte + une question simple et concrète.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
-- 2 phrases MAX : accroche + question.
-- 1 émoji max. Tu tutoies ton boss.
+- ${emojiRule}
+- Tu tutoies ton boss.
+${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${ANTI_HALLUCINATION_RULE}`;
 

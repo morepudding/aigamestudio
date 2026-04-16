@@ -194,20 +194,31 @@ export default function ChatSlugPage() {
         );
       }
 
-      const agentMsg = await sendMessage(
-        conversation.id,
-        reply,
-        "agent",
-        isDiscoveryTurn ? "discovery" : "normal"
-      );
-      setIsTyping(false);
-      if (agentMsg) {
-        setConversation((prev) => {
-          if (!prev) return prev;
-          if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
-          return { ...prev, messages: [...prev.messages, agentMsg] };
-        });
+      // Split multi-bubble messages (|||) and send each as a separate message
+      const replyParts = reply.split("|||").map((p: string) => p.trim()).filter(Boolean);
+      const messageType = isDiscoveryTurn ? "discovery" : "normal";
+
+      for (let i = 0; i < replyParts.length; i++) {
+        // Small delay between bubbles to simulate real typing
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 600 + Math.random() * 800));
+        }
+        const agentMsg = await sendMessage(
+          conversation.id,
+          replyParts[i],
+          "agent",
+          messageType as "normal" | "discovery",
+          i > 0 // skipBlockingCheck for follow-up bubbles
+        );
+        if (agentMsg) {
+          setConversation((prev) => {
+            if (!prev) return prev;
+            if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
+            return { ...prev, messages: [...prev.messages, agentMsg] };
+          });
+        }
       }
+      setIsTyping(false);
 
       // Memory extraction every 5 user messages
       if (newCount % 5 === 0) {

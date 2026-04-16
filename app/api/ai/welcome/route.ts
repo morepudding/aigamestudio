@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE } from "@/lib/prompts/rules";
+import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, buildTimeContext } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
 
@@ -44,19 +44,24 @@ export async function POST(req: NextRequest) {
     ? "Tu retrouves ton boss pour une nouvelle conversation. Fais référence à un souvenir récent si pertinent."
     : "C'est ton premier message à ton boss — ouvre la conversation naturellement.";
 
+  const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
+  const timeBlock = buildTimeContext();
+
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
 Background : ${backstory ?? "Tu viens d'être recruté dans l'équipe."}${memoryBlock}${moodBlock}
 
 ${studio.full}
 
+${timeBlock}
+
 ${greetingContext}
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
-- 1 à 2 phrases MAX. Naturel et décontracté.
-- 1 émoji max, seulement si c'est ton style.
+- ${emojiRule}
 - Tu tutoies ton boss.
+${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${ANTI_HALLUCINATION_RULE}`;
 
@@ -72,7 +77,7 @@ ${ANTI_HALLUCINATION_RULE}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: "Envoie ton premier message." },
       ],
-      max_tokens: 120,
+      max_tokens: 200,
       temperature: 0.85,
     }),
   });

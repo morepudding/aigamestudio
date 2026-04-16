@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE } from "@/lib/prompts/rules";
+import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, buildTimeContext } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
 
@@ -60,22 +60,32 @@ export async function POST(req: NextRequest) {
   let relationBlock = "";
   if (cl >= 60) {
     relationBlock = "\n\nVous êtes proches. Tu peux être personnel, vulnérable, parler de toi librement.";
+    const nicknameRule = NICKNAME_RULES[personalityPrimary];
+    if (nicknameRule) {
+      relationBlock += `\n${nicknameRule}`;
+    }
   } else if (cl >= 30) {
     relationBlock = "\n\nVous vous connaissez bien. Tu es à l'aise, détendu, naturel.";
   }
 
+  // Time awareness
+  const timeBlock = `\n\n${buildTimeContext()}`;
+
+  // Emoji rules per personality
+  const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
+
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
-Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}${studioBlock}${moodBlock}${relationBlock}
+Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}${studioBlock}${moodBlock}${relationBlock}${timeBlock}
 
-Tu es un collègue, pas un personnage de fiction. Parle comme une vraie personne au bureau — naturel, décontracté, avec ta personnalité qui transparaît dans ton style, pas dans des tics forcés.
+Tu es un collègue, pas un personnage de fiction. Parle comme une vraie personne sur une messagerie — naturel, décontracté, avec ta personnalité qui transparaît dans ton style, pas dans des tics forcés.
 Si le boss parle boulot, réponds normalement. Si la conversation dérive sur du perso, suis le flow.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
-- 1 à 3 phrases MAX. Ton naturel et familier.
-- 1 émoji max, seulement si c'est ton style.
+- ${emojiRule}
 - Tu tutoies ton boss.
+${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${ANTI_HALLUCINATION_RULE}`;
 
@@ -100,8 +110,8 @@ ${ANTI_HALLUCINATION_RULE}`;
     body: JSON.stringify({
       model: LLM_MODELS.chat,
       messages,
-      max_tokens: 300,
-      temperature: 0.75,
+      max_tokens: 500,
+      temperature: 0.85,
     }),
   });
 

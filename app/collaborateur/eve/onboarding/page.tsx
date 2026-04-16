@@ -41,6 +41,9 @@ export default function EveOnboardingPage() {
   const [eveMessage, setEveMessage] = useState(""); // intro message only
   const [eveLoading, setEveLoading] = useState(false);
 
+  const [eveStepMessage, setEveStepMessage] = useState(""); // Eve's question/prompt for steps 2-6
+  const [eveStepLoading, setEveStepLoading] = useState(false);
+
   const [stepChoices, setStepChoices] = useState<string[]>([]);
   const [choicesLoading, setChoicesLoading] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
@@ -79,37 +82,53 @@ export default function EveOnboardingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Fetch choices for a step ─────────────────────────
+  // ── Fetch Eve's question + choices for a step ────────
   const fetchChoices = useCallback(async (step: number) => {
     setChoicesLoading(true);
+    setEveStepLoading(true);
     setStepChoices([]);
     setSelectedChoice(null);
     setAgentReaction("");
+    setEveStepMessage("");
 
     const conversationHistory = stepResults.flatMap((r) => [
       { sender: "user", content: r.playerChoice },
       { sender: "eve", content: r.agentReaction },
     ]);
 
-    try {
-      const res = await fetch("/api/ai/onboarding/eve/choices", {
+    const payload = { step, conversationHistory, playerName };
+
+    const [choicesRes, questionRes] = await Promise.allSettled([
+      fetch("/api/ai/onboarding/eve/choices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step, conversationHistory, playerName }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStepChoices(data.choices ?? []);
-      }
-    } catch {
+        body: JSON.stringify(payload),
+      }),
+      fetch("/api/ai/onboarding/eve/question", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    ]);
+
+    if (choicesRes.status === "fulfilled" && choicesRes.value.ok) {
+      const data = await choicesRes.value.json();
+      setStepChoices(data.choices ?? []);
+    } else {
       setStepChoices([
         "Je réponds avec honnêteté.",
         "Je prends le temps de réfléchir avant de répondre.",
         "Je renvoie la question à Eve.",
       ]);
-    } finally {
-      setChoicesLoading(false);
     }
+
+    if (questionRes.status === "fulfilled" && questionRes.value.ok) {
+      const data = await questionRes.value.json();
+      setEveStepMessage(data.message ?? "");
+    }
+
+    setChoicesLoading(false);
+    setEveStepLoading(false);
   }, [stepResults, playerName]);
 
   // ── Handle name submission (step 1) ──────────────────
@@ -150,6 +169,7 @@ export default function EveOnboardingPage() {
       setStepChoices([]);
       setSelectedChoice(null);
       setAgentReaction("");
+      setEveStepMessage("");
     } else if (step <= 6) {
       fetchChoices(step);
     } else if (step === 7) {
@@ -510,9 +530,25 @@ export default function EveOnboardingPage() {
                 </div>
               )}
 
-              {/* Steps 2-6: Choices */}
-              {currentStep >= 2 && (choicesLoading ? (
-                <div className="flex items-center justify-center py-12">
+              {/* Steps 2-6: Eve speaks first */}
+              {currentStep >= 2 && (
+                <div className="border-l-2 border-rose-500/30 pl-4 py-1">
+                  <p className="text-[11px] text-rose-400/60 mb-2 font-semibold uppercase tracking-wide">Eve</p>
+                  {eveStepLoading ? (
+                    <div className="flex gap-1.5 py-1">
+                      <span className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1.5 h-1.5 bg-white/30 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  ) : (
+                    <p className="text-[15px] text-white/80 leading-relaxed">{parseEmotion(eveStepMessage).text}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Steps 2-6: Choices — only shown once Eve has spoken */}
+              {currentStep >= 2 && !eveStepLoading && eveStepMessage && (choicesLoading ? (
+                <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (

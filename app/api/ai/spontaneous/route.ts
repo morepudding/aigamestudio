@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { NO_DIDASCALIE_RULE } from "@/lib/prompts/rules";
+import { NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, buildTimeContext } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
 
@@ -86,21 +86,28 @@ ${memories ? `Utilise ce que tu sais de lui si pertinent.` : ""}`,
 Réagis-y avec ta personnalité — comment ça te touche, ce que t'en penses.`,
   };
 
+  const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
+  const timeBlock = buildTimeContext();
+  const nicknameRule = cl >= 60 ? (NICKNAME_RULES[personalityPrimary] ?? "") : "";
+
   const systemPrompt = `Tu es ${name}, ${role} chez Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? ` (${personalityNuance})` : ""}.
 Background : ${backstory ?? "Membre de l'équipe."}${memoryBlock}${moodBlock}
 
 ${studio.full}
 
-Tu envoies un message spontané à ton boss — c'est toi qui initie.
+${timeBlock}
 
+Tu envoies un message spontané à ton boss — c'est toi qui initie.
+${nicknameRule ? `${nicknameRule}\n` : ""}
 ${typeInstructions[type] ?? typeInstructions.idle}
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
-- 1 à 2 phrases MAX.
-- 1 émoji max. Tu tutoies ton boss.
+- ${emojiRule}
+- Tu tutoies ton boss.
 - N'invente pas de faits sur le studio ou le boss.
+${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}`;
 
   const res = await fetch(OPENROUTER_URL, {
@@ -115,7 +122,7 @@ ${NO_DIDASCALIE_RULE}`;
         { role: "system", content: systemPrompt },
         { role: "user", content: "Envoie un message spontané à ton boss." },
       ],
-      max_tokens: 150,
+      max_tokens: 300,
       temperature: 0.9,
     }),
   });

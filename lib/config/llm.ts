@@ -1,10 +1,10 @@
 // LLM models and configuration for Eden Studio
-// Chat: DeepSeek V3 (fast, personality-driven)
+// Chat: MiniMax M2.7 (excellent personality-driven conversation & roleplay)
 // Tasks/Docs: DeepSeek V3 (high quality, structured output)
 // Code: DeepSeek V3 (agentic coding loop with tool calling)
 
 export const LLM_MODELS = {
-  chat: "deepseek/deepseek-chat-v3-0324",
+  chat: "minimax/minimax-m2.7",
   tasks: "deepseek/deepseek-chat-v3-0324",
   // Upgrade to "anthropic/claude-sonnet-4" for complex codebases
   code: "deepseek/deepseek-chat-v3-0324",
@@ -14,8 +14,8 @@ export type LLMModel = (typeof LLM_MODELS)[keyof typeof LLM_MODELS];
 
 export const LLM_PARAMS = {
   chat: {
-    temperature: 0.8,
-    max_tokens: 300,
+    temperature: 0.85,
+    max_tokens: 500,
   },
   tasks: {
     temperature: 0.4,
