@@ -1,0 +1,719 @@
+"use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
+import { X, MessageCircle, ArrowLeft, Sparkles, Loader2 } from "lucide-react";
+import { useChatPanel } from "./ChatPanelProvider";
+import { ChatInput } from "./ChatInput";
+import { MessageBubble, DateSeparator } from "./MessageBubble";
+import { MomentVivantChat } from "./MomentVivantChat";
+import type { MomentVivantScenario } from "@/lib/types/momentVivant";
+import { Conversation, Message } from "@/lib/types/chat";
+import {
+  initConversation,
+  sendMessage,
+  generateAIReply,
+  generateMemoryInterviewReply,
+  extractMemories,
+  shouldTriggerDiscovery,
+  getAllConversations,
+} from "@/lib/services/chatService";
+import {
+  getAgentMemories,
+  formatMemoriesForPrompt,
+  saveAgentMemories,
+  MemoryType,
+} from "@/lib/services/memoryService";
+import { supabase } from "@/lib/supabase/client";
+import { MoodRing, type Mood } from "@/components/ui/MoodRing";
+import { ConfidenceBadge } from "@/components/ui/ConfidenceGauge";
+
+// ─── Spontaneous message config ──────────────────────────────────────────────
+const SPONTANEOUS_IDLE_MS = 15 * 60 * 1000; // 15 minutes without activity
+const SPONTANEOUS_CHECK_MS = 60 * 1000;     // check every minute
+const SPONTANEOUS_MAX_PENDING = 2;           // max unanswered spontaneous messages
+
+type SpontaneousType = "idle" | "thinking_of_you" | "personal" | "memory_callback" | "event_reaction";
+
+function pickSpontaneousType(confidenceLevel: number, hasMemories: boolean): SpontaneousType {
+  const types: SpontaneousType[] = ["idle", "thinking_of_you", "personal"];
+  if (hasMemories) types.push("memory_callback");
+  if (confidenceLevel >= 40) types.push("thinking_of_you", "thinking_of_you"); // more weight
+  if (confidenceLevel >= 60) types.push("personal", "memory_callback");
+  return types[Math.floor(Math.random() * types.length)];
+}
+
+interface AgentInfo {
+  slug: string;
+  name: string;
+  role: string;
+  department: string;
+  personality_primary: string;
+  personality_nuance?: string;
+  backstory?: string;
+  icon_url?: string | null;
+  mood?: string | null;
+  confidence_level?: number | null;
+}
+
+const departmentGradients: Record<string, string> = {
+  art: "from-pink-500 to-rose-600",
+  programming: "from-cyan-500 to-blue-600",
+  "game-design": "from-amber-500 to-orange-600",
+  audio: "from-violet-500 to-purple-600",
+  narrative: "from-emerald-500 to-teal-600",
+  qa: "from-lime-500 to-green-600",
+  marketing: "from-red-500 to-pink-600",
+  production: "from-indigo-500 to-blue-600",
+};
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+export function ChatPanel() {
+  const { isOpen, activeAgentSlug, closeChat, openChat, openHub } = useChatPanel();
+  const [agent, setAgent] = useState<AgentInfo | null>(null);
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+
+  // Hub state
+  const [hubAgents, setHubAgents] = useState<AgentInfo[]>([]);
+  const [hubConversations, setHubConversations] = useState<Conversation[]>([]);
+  const [hubLoading, setHubLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [agentMemories, setAgentMemories] = useState<string>("");
+  const [activeMoment, setActiveMoment] = useState<MomentVivantScenario | null>(null);
+  const [momentTriggering, setMomentTriggering] = useState(false);
+  const [momentCooldownUntil, setMomentCooldownUntil] = useState<number | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const prevSlugRef = useRef<string | null>(null);
+
+  // Spontaneous message tracking
+  const lastUserActivityRef = useRef<number>(Date.now());
+  const spontaneousPendingCountRef = useRef<number>(0);
+  const spontaneousTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSpontaneousRef = useRef<number>(0); // timestamp of last spontaneous message sent
+
+  // Load hub (agents + conversations) when panel opens in hub mode
+  useEffect(() => {
+    if (!isOpen || activeAgentSlug) return;
+
+    async function loadHub() {
+      setHubLoading(true);
+      try {
+        const [agentsRes, conversations] = await Promise.all([
+          fetch("/api/agents").then((r) => r.json()),
+          getAllConversations(),
+        ]);
+        setHubAgents(agentsRes as AgentInfo[]);
+        setHubConversations(conversations);
+      } catch {
+        // silent fail
+      } finally {
+        setHubLoading(false);
+      }
+    }
+    loadHub();
+  }, [isOpen, activeAgentSlug]);
+
+  // Reset moment vivant when agent changes
+  useEffect(() => {
+    setActiveMoment(null);
+  }, [activeAgentSlug]);
+
+  // Load agent + conversation when panel opens
+  useEffect(() => {
+    if (!isOpen || !activeAgentSlug) {
+      return;
+    }
+
+    // Don't reload if same agent
+    if (prevSlugRef.current === activeAgentSlug && conversation) return;
+    prevSlugRef.current = activeAgentSlug;
+
+    async function load() {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/agents/${activeAgentSlug}`);
+        if (!res.ok) return;
+        const agentData: AgentInfo = await res.json();
+        setAgent(agentData);
+
+        const memories = await getAgentMemories(agentData.slug);
+        const formatted = formatMemoriesForPrompt(memories);
+        setAgentMemories(formatted);
+
+        const conv = await initConversation(
+          agentData.slug,
+          agentData.name,
+          agentData.personality_primary,
+          agentData.personality_nuance ?? "",
+          agentData.role ?? "",
+          agentData.backstory ?? "",
+          formatted
+        );
+        setConversation(conv);
+      } catch {
+        // silent fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeAgentSlug]);
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!activeAgentSlug || !isOpen) return;
+
+    const channel = supabase
+      .channel(`panel-messages-${activeAgentSlug}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const row = payload.new as {
+            id: string;
+            conversation_id: string;
+            sender: "user" | "agent";
+            content: string;
+            timestamp: number;
+            message_type: "normal" | "discovery";
+          };
+
+          setConversation((prev) => {
+            if (!prev || prev.id !== row.conversation_id) return prev;
+            if (prev.messages.some((m) => m.id === row.id)) return prev;
+            return {
+              ...prev,
+              lastMessageAt: row.timestamp,
+              awaitingUserReply: row.sender === "agent",
+              messages: [
+                ...prev.messages,
+                {
+                  id: row.id,
+                  conversationId: row.conversation_id,
+                  sender: row.sender,
+                  content: row.content,
+                  timestamp: row.timestamp,
+                  messageType: row.message_type ?? "normal",
+                },
+              ],
+            };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeAgentSlug, isOpen]);
+
+  // Spontaneous message timer — fires when user is idle too long
+  useEffect(() => {
+    if (!agent || !conversation) return;
+
+    // Clear any existing timer
+    if (spontaneousTimerRef.current) clearInterval(spontaneousTimerRef.current);
+
+    spontaneousTimerRef.current = setInterval(async () => {
+      const idleMs = Date.now() - lastUserActivityRef.current;
+      if (idleMs < SPONTANEOUS_IDLE_MS) return;
+
+      // Don't send if already too many unanswered spontaneous messages
+      if (spontaneousPendingCountRef.current >= SPONTANEOUS_MAX_PENDING) return;
+
+      // Require at least 10 minutes between two consecutive spontaneous messages
+      const timeSinceLast = Date.now() - lastSpontaneousRef.current;
+      if (spontaneousPendingCountRef.current > 0 && timeSinceLast < 10 * 60 * 1000) return;
+
+      // Don't send if panel is not open (no point — user won't see it)
+      // (still store in DB for realtime notification)
+
+      const type = pickSpontaneousType(
+        agent.confidence_level ?? 0,
+        agentMemories.length > 0
+      );
+
+      try {
+        const res = await fetch("/api/ai/spontaneous", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: agent.name,
+            role: agent.role,
+            gender: "femme", // default; ideally from agent data
+            personalityPrimary: agent.personality_primary,
+            personalityNuance: agent.personality_nuance ?? "",
+            backstory: agent.backstory ?? "",
+            memories: agentMemories || undefined,
+            mood: agent.mood ?? undefined,
+            confidenceLevel: agent.confidence_level ?? 0,
+            type,
+          }),
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.message) return;
+
+        await sendMessage(conversation.id, data.message, "agent", "normal");
+        spontaneousPendingCountRef.current += 1;
+        lastSpontaneousRef.current = Date.now();
+        // Reset idle timer so we don't spam immediately after
+        lastUserActivityRef.current = Date.now();
+      } catch {
+        // silent fail
+      }
+    }, SPONTANEOUS_CHECK_MS);
+
+    return () => {
+      if (spontaneousTimerRef.current) clearInterval(spontaneousTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent?.slug, conversation?.id, agentMemories]);
+
+  // Auto-scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation?.messages.length]);
+
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      if (!agent || !conversation) return;
+
+      // Reset spontaneous tracking on user activity
+      lastUserActivityRef.current = Date.now();
+      spontaneousPendingCountRef.current = 0;
+      lastSpontaneousRef.current = 0;
+
+      const userMsg = await sendMessage(conversation.id, content, "user");
+      if (userMsg) {
+        setConversation((prev) => {
+          if (!prev) return prev;
+          if (prev.messages.some((m) => m.id === userMsg.id)) return prev;
+          return {
+            ...prev,
+            messageCount: prev.messageCount + 1,
+            messages: [...prev.messages, userMsg],
+          };
+        });
+      }
+
+      const newCount = conversation.messageCount + 1;
+      const isDiscoveryTurn = shouldTriggerDiscovery(newCount, conversation.discoveryRhythm);
+
+      const history = conversation.messages.map((m) => ({
+        sender: m.sender,
+        content: m.content,
+      }));
+
+      setIsTyping(true);
+
+      let reply: string;
+      if (isDiscoveryTurn) {
+        reply = await generateMemoryInterviewReply(
+          {
+            name: agent.name,
+            role: agent.role,
+            personalityPrimary: agent.personality_primary,
+            personalityNuance: agent.personality_nuance ?? "",
+            backstory: agent.backstory ?? "",
+          },
+          history,
+          content,
+          agentMemories
+        );
+      } else {
+        reply = await generateAIReply(
+          {
+            name: agent.name,
+            role: agent.role,
+            personalityPrimary: agent.personality_primary,
+            personalityNuance: agent.personality_nuance ?? "",
+            backstory: agent.backstory ?? "",
+          },
+          history,
+          content,
+          agentMemories
+        );
+      }
+
+      const agentMsg = await sendMessage(
+        conversation.id,
+        reply,
+        "agent",
+        isDiscoveryTurn ? "discovery" : "normal"
+      );
+      setIsTyping(false);
+
+      if (agentMsg) {
+        setConversation((prev) => {
+          if (!prev) return prev;
+          if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
+          return { ...prev, messages: [...prev.messages, agentMsg] };
+        });
+      }
+
+      // Memory extraction every 5 user messages
+      if (newCount % 5 === 0) {
+        const messagesForExtraction = [
+          ...history,
+          { sender: "user", content },
+          { sender: "agent", content: reply },
+        ];
+        extractMemories(agent.name, agent.role, messagesForExtraction).then(
+          async (newMemories) => {
+            if (newMemories.length > 0) {
+              await saveAgentMemories(
+                newMemories.map((m) => ({
+                  agent_slug: agent.slug,
+                  memory_type: m.type as MemoryType,
+                  content: m.content,
+                  source_conversation_id: conversation.id,
+                }))
+              );
+              const updated = await getAgentMemories(agent.slug);
+              setAgentMemories(formatMemoriesForPrompt(updated));
+            }
+          }
+        );
+      }
+    },
+    [agent, conversation, agentMemories]
+  );
+
+  const handleTriggerMoment = useCallback(async () => {
+    if (!agent || momentTriggering) return;
+    setMomentTriggering(true);
+    try {
+      const triggerRes = await fetch(`/api/moment-vivant/${agent.slug}/trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
+      });
+      const triggerData = await triggerRes.json() as {
+        ok?: boolean;
+        skipped?: string;
+        messageId?: string;
+      };
+      if (triggerData.ok && triggerData.messageId) {
+        const { supabase: sb } = await import("@/lib/supabase/client");
+        const { data: msgRow } = await sb
+          .from("messages")
+          .select("*")
+          .eq("id", triggerData.messageId)
+          .single();
+        if (msgRow) {
+          const newMsg = {
+            id: msgRow.id as string,
+            conversationId: msgRow.conversation_id as string,
+            sender: msgRow.sender as "user" | "agent",
+            content: msgRow.content as string,
+            timestamp: msgRow.timestamp as number,
+            messageType: msgRow.message_type as "normal" | "discovery" | "moment_vivant",
+          };
+          setConversation((prev) => {
+            if (!prev) return prev;
+            if (prev.messages.some((m) => m.id === newMsg.id)) return prev;
+            return { ...prev, messages: [...prev.messages, newMsg] };
+          });
+          // Cooldown 20h
+          setMomentCooldownUntil(Date.now() + 20 * 60 * 60 * 1000);
+        }
+      } else if (triggerData.skipped === "too_recent") {
+        setMomentCooldownUntil(Date.now() + 20 * 60 * 60 * 1000);
+      }
+    } catch {
+      // silent
+    } finally {
+      setMomentTriggering(false);
+    }
+  }, [agent, momentTriggering]);
+
+  const handleOpenMomentVivant = useCallback(
+    async (_messageId: string) => {
+      if (!agent) return;
+      // Récupérer le scénario ouvert pour cet agent
+      try {
+        const res = await fetch(`/api/moment-vivant/${agent.slug}`);
+        const data = await res.json() as { moment: MomentVivantScenario | null };
+        if (data.moment) {
+          setActiveMoment(data.moment);
+        }
+      } catch {
+        // silent
+      }
+    },
+    [agent]
+  );
+
+  // Group messages by date
+  const messagesWithDates: Array<
+    | { type: "date"; timestamp: number; key: string }
+    | { type: "message"; msg: Message; key: string }
+  > = [];
+  if (conversation) {
+    let lastDate = "";
+    conversation.messages.forEach((msg) => {
+      const date = new Date(msg.timestamp).toDateString();
+      if (date !== lastDate) {
+        messagesWithDates.push({ type: "date", timestamp: msg.timestamp, key: `date-${date}` });
+        lastDate = date;
+      }
+      messagesWithDates.push({ type: "message", msg, key: msg.id });
+    });
+  }
+
+  const gradient = agent
+    ? departmentGradients[agent.department] ?? "from-gray-500 to-gray-600"
+    : "from-gray-500 to-gray-600";
+  const initials = agent ? getInitials(agent.name) : "?";
+
+  return (
+    <>
+      {/* Moment Vivant chat overlay */}
+      {activeMoment && agent && (
+        <MomentVivantChat
+          agent={agent}
+          scenario={activeMoment}
+          gradient={gradient}
+          initials={initials}
+          onClose={() => setActiveMoment(null)}
+        />
+      )}
+
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-50 lg:hidden"
+          onClick={closeChat}
+        />
+      )}
+
+      {/* Panel */}
+      <div
+        className={`fixed top-0 right-0 h-full w-full md:max-w-md bg-background border-l border-white/10 shadow-2xl shadow-black/40 z-50 flex flex-col transition-transform duration-300 ease-out ${
+          isOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/6 bg-white/2 backdrop-blur-sm shrink-0">
+          {activeAgentSlug && agent ? (
+            <>
+              {/* Back to hub */}
+              <button
+                onClick={openHub}
+                className="w-7 h-7 rounded-lg hover:bg-white/8 flex items-center justify-center transition-colors shrink-0"
+                title="Retour aux messages"
+              >
+                <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <MoodRing
+                mood={agent.mood as Mood}
+                size="sm"
+                imageUrl={agent.icon_url}
+                fallbackGradient={gradient}
+                initials={initials}
+                showOnlineIndicator={true}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white truncate">{agent.name}</h3>
+                  {(agent.confidence_level ?? 0) > 0 && (
+                    <ConfidenceBadge level={agent.confidence_level ?? 0} />
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground/50 truncate">{agent.role}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-7 h-7 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-white">Messages</h3>
+                <p className="text-[11px] text-muted-foreground/50">Vos conversations</p>
+              </div>
+            </>
+          )}
+          {activeAgentSlug && agent && (
+            <button
+              onClick={handleTriggerMoment}
+              disabled={momentTriggering || (momentCooldownUntil !== null && Date.now() < momentCooldownUntil)}
+              title="Déclencher un Moment Vivant"
+              className="w-8 h-8 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0 border border-amber-500/20"
+            >
+              {momentTriggering
+                ? <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                : <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              }
+            </button>
+          )}
+          <button
+            onClick={closeChat}
+            className="w-8 h-8 rounded-lg bg-white/6 hover:bg-white/10 flex items-center justify-center transition-colors shrink-0"
+          >
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Content */}
+        {!activeAgentSlug ? (
+          /* ── Hub view ── */
+          hubLoading ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground/50 animate-pulse">
+              <MessageCircle className="w-5 h-5 mr-2" />
+              Chargement…
+            </div>
+          ) : (
+            <HubList agents={hubAgents} conversations={hubConversations} onSelectAgent={openChat} />
+          )
+        ) : loading ? (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground animate-pulse">
+            <MessageCircle className="w-5 h-5 mr-2" />
+            Chargement…
+          </div>
+        ) : conversation && agent ? (
+          <>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 scrollbar-none">
+              {messagesWithDates.map((item) => {
+                if (item.type === "date") {
+                  return <DateSeparator key={item.key} timestamp={item.timestamp} />;
+                }
+                return (
+                  <MessageBubble
+                    key={item.key}
+                    message={item.msg}
+                    agentName={agent.name}
+                    agentInitials={initials}
+                    agentIconUrl={agent.icon_url ?? null}
+                    gradient={gradient}
+                    onOpenMomentVivant={handleOpenMomentVivant}
+                  />
+                );
+              })}
+
+              {isTyping && (
+                <div className="flex items-center gap-2 text-muted-foreground/40 text-[10px] pl-10 animate-pulse">
+                  <div className="flex gap-1">
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.3s]" />
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce [animation-delay:-0.15s]" />
+                    <span className="w-1 h-1 bg-current rounded-full animate-bounce" />
+                  </div>
+                  <span>{agent.name} écrit...</span>
+                </div>
+              )}
+
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Input */}
+            <ChatInput
+              onSend={handleSendMessage}
+              placeholder={`Écrire à ${agent.name}…`}
+              disabled={isTyping}
+            />
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground/50 text-sm">
+            Sélectionnez un collaborateur
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Hub list ─────────────────────────────────────────────────────────────────
+
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `${mins}min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}j`;
+}
+
+function HubList({
+  agents,
+  conversations,
+  onSelectAgent,
+}: {
+  agents: AgentInfo[];
+  conversations: Conversation[];
+  onSelectAgent: (slug: string) => void;
+}) {
+  // Sort: conversations first by recency, then agents without convos
+  const sorted = [...agents].sort((a, b) => {
+    const ca = conversations.find((c) => c.agentSlug === a.slug);
+    const cb = conversations.find((c) => c.agentSlug === b.slug);
+    if (ca && cb) return cb.lastMessageAt - ca.lastMessageAt;
+    if (ca) return -1;
+    if (cb) return 1;
+    return 0;
+  });
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-none">
+      {sorted.map((ag) => {
+        const conv = conversations.find((c) => c.agentSlug === ag.slug);
+        const lastMsg = conv?.messages[conv.messages.length - 1];
+        const hasUnread = conv ? !conv.awaitingUserReply : false;
+        const gradient = departmentGradients[ag.department] ?? "from-gray-500 to-gray-600";
+        const initials = getInitials(ag.name);
+
+        return (
+          <button
+            key={ag.slug}
+            onClick={() => onSelectAgent(ag.slug)}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/4 transition-colors border-b border-white/4 text-left"
+          >
+            {/* Avatar with mood ring */}
+            <MoodRing
+              mood={ag.mood as Mood}
+              size="md"
+              imageUrl={ag.icon_url}
+              fallbackGradient={gradient}
+              initials={initials}
+              showOnlineIndicator={true}
+            />
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className={`text-sm truncate ${hasUnread ? "font-semibold text-white" : "font-medium text-white/80"}`}>
+                  {ag.name}
+                </span>
+                {conv && (
+                  <span className="text-[10px] text-muted-foreground/50 shrink-0 ml-2">
+                    {timeAgo(conv.lastMessageAt)}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                <p className={`text-[12px] truncate max-w-50 ${hasUnread ? "text-white/70" : "text-muted-foreground/50"}`}>
+                  {lastMsg ? lastMsg.content : ag.role}
+                </p>
+                {hasUnread && (
+                  <span className="w-2 h-2 rounded-full bg-primary shrink-0 ml-2" />
+                )}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
