@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LLM_MODELS } from "@/lib/config/llm";
-import { buildEveOnboardingSystemPrompt, EVE_ONBOARDING_STEPS } from "@/lib/prompts/eveOnboarding";
+import { EVE_ONBOARDING_STEPS } from "@/lib/prompts/eveOnboarding";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -33,23 +33,26 @@ export async function POST(req: NextRequest) {
   if (!apiKey) return NextResponse.json({ choices: fallbackChoices(step) });
 
   const stepData = EVE_ONBOARDING_STEPS[step];
-  const systemPrompt = buildEveOnboardingSystemPrompt(step);
+
+  const systemPrompt = `Tu es un générateur de réponses pour un jeu narratif. Tu écris des réponses courtes à la première personne, comme si c'était le joueur (le "boss") qui parlait à Eve, une collaboratrice qu'il rencontre pour la première fois.
+
+Les réponses doivent sonner naturelles, humaines, en français. Pas de fioriture, pas de jargon. Chaque réponse révèle un profil ou une attitude différente.`;
 
   // Build conversation context
   const historyText = conversationHistory.length > 0
-    ? "\n\nCONVERSATION PRÉCÉDENTE :\n" + conversationHistory
+    ? "\n\nCONTEXTE — ce qui s'est dit avant :\n" + conversationHistory
         .map((m) => `${m.sender === "user" ? "Boss" : "Eve"}: ${m.content}`)
         .join("\n")
     : "";
 
   const userPrompt = `${historyText}
 
-MAINTENANT : ${stepData.choiceContext}
+SITUATION : ${stepData.choiceContext}
 
-Génère exactement 3 réponses courtes (1-2 phrases chacune) que le boss pourrait choisir. Format JSON strict :
+Génère exactement 3 réponses courtes (1-2 phrases chacune) que le boss pourrait dire. Format JSON strict :
 {"choices": ["réponse A", "réponse B", "réponse C"]}
 
-Les 3 réponses doivent être distinctes, crédibles, naturelles en français.`;
+Les 3 réponses doivent être distinctes, crédibles, naturelles en français, à la première personne.`;
 
   try {
     const res = await fetch(OPENROUTER_URL, {
