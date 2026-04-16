@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Conversation } from "@/lib/types/chat";
 import { MessageBubble, DateSeparator } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { Pin, Clock, Sparkles } from "lucide-react";
+import { Pin, Clock, Sparkles, Heart } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 interface AgentInfo {
@@ -35,6 +35,19 @@ const moodEmojis: Record<string, string> = {
   nostalgique: "🥹",
   "inspiré": "✨",
   "agacé": "😒",
+};
+
+const moodHints: Record<string, { hint: string; intensity: "low" | "medium" | "high" }> = {
+  enthousiaste: { hint: "déborde d'énergie", intensity: "high" },
+  frustré: { hint: "semble contrariée", intensity: "high" },
+  curieux: { hint: "a une question", intensity: "medium" },
+  fier: { hint: "veut partager quelque chose", intensity: "medium" },
+  inquiet: { hint: "a besoin de vous", intensity: "high" },
+  joueur: { hint: "veut s'amuser", intensity: "medium" },
+  nostalgique: { hint: "pense à vous", intensity: "low" },
+  inspiré: { hint: "a une idée", intensity: "high" },
+  agacé: { hint: "attend votre réponse", intensity: "medium" },
+  neutre: { hint: "vous a écrit", intensity: "low" },
 };
 
 const departmentGradients: Record<string, string> = {
@@ -129,6 +142,26 @@ export function ChatConversation({
           <p className="text-xs text-muted-foreground/50 truncate">
             {agent.role}
           </p>
+          {agent.mood && agent.mood !== "neutre" && (() => {
+            const moodInfo = moodHints[agent.mood] ?? null;
+            if (!moodInfo) return null;
+            return (
+              <p className={`text-[11px] italic leading-tight animate-in fade-in slide-in-from-left-2 duration-500 ${
+                moodInfo.intensity === "high"
+                  ? "text-rose-400/80"
+                  : moodInfo.intensity === "medium"
+                    ? "text-amber-400/80"
+                    : "text-muted-foreground/60"
+              }`}>
+                {moodInfo.intensity === "high" ? (
+                  <Heart className="w-2.5 h-2.5 inline mr-1 animate-pulse" />
+                ) : moodInfo.intensity === "medium" ? (
+                  <Sparkles className="w-2.5 h-2.5 inline mr-1" />
+                ) : null}
+                {agent.name} {moodInfo.hint}...
+              </p>
+            );
+          })()}
         </div>
         {conversation.awaitingUserReply && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20">

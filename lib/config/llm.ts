@@ -1,10 +1,10 @@
 // LLM models and configuration for Eden Studio
-// Chat: MiniMax M2.7 (excellent personality-driven conversation & roleplay)
+// Chat: Grok 4.1 Fast (fast, good French, personality-driven conversation)
 // Tasks/Docs: DeepSeek V3 (high quality, structured output)
 // Code: DeepSeek V3 (agentic coding loop with tool calling)
 
 export const LLM_MODELS = {
-  chat: "minimax/minimax-m2.7",
+  chat: "x-ai/grok-4.1-fast",
   tasks: "deepseek/deepseek-chat-v3-0324",
   // Upgrade to "anthropic/claude-sonnet-4" for complex codebases
   code: "deepseek/deepseek-chat-v3-0324",
@@ -14,7 +14,7 @@ export type LLMModel = (typeof LLM_MODELS)[keyof typeof LLM_MODELS];
 
 export const LLM_PARAMS = {
   chat: {
-    temperature: 0.85,
+    temperature: 0.75,
     max_tokens: 500,
   },
   tasks: {
@@ -73,6 +73,7 @@ export interface AgentResponse {
 /**
  * Centralized OpenRouter API call.
  * Reads OPENROUTER_API_KEY from environment variables.
+ * Retries once on empty response.
  */
 export async function callOpenRouter(
   model: string,
@@ -84,32 +85,48 @@ export async function callOpenRouter(
     throw new Error("OPENROUTER_API_KEY is not defined");
   }
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-      "X-Title": "Eden Studio",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: params?.temperature,
-      max_tokens: params?.max_tokens,
-    }),
-  });
+  const doRequest = async (): Promise<LLMResponse> => {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+        "X-Title": "Eden Studio",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: params?.temperature,
+        max_tokens: params?.max_tokens,
+      }),
+    });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenRouter API error ${response.status}: ${error}`);
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenRouter API error ${response.status}: ${error}`);
+    }
+
+    const data = await response.json();
+    const rawContent: string | null = data.choices?.[0]?.message?.content ?? null;
+    const tokensUsed: number | null = data.usage?.total_tokens ?? null;
+
+    return { content: rawContent ?? "", tokensUsed };
+  };
+
+  const result = await doRequest();
+
+  // Retry once if content is empty (model sometimes returns null)
+  if (!result.content.trim()) {
+    console.warn("[callOpenRouter] Empty content from model:", model, "— retrying once");
+    const retry = await doRequest();
+    if (!retry.content.trim()) {
+      console.error("[callOpenRouter] Empty content after retry, model:", model);
+    }
+    return retry;
   }
 
-  const data = await response.json();
-  const content: string = data.choices?.[0]?.message?.content ?? "";
-  const tokensUsed: number | null = data.usage?.total_tokens ?? null;
-
-  return { content, tokensUsed };
+  return result;
 }
 
 /**

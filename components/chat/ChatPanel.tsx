@@ -20,12 +20,15 @@ import {
 import {
   getAgentMemories,
   formatMemoriesForPrompt,
+  formatPersonalMemories,
+  formatRecentTopics,
   saveAgentMemories,
   MemoryType,
 } from "@/lib/services/memoryService";
 import { supabase } from "@/lib/supabase/client";
 import { MoodRing, type Mood } from "@/components/ui/MoodRing";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceGauge";
+import { TierUnlockPopup } from "@/components/ui/TierUnlockPopup";
 
 
 interface AgentInfo {
@@ -73,7 +76,10 @@ export function ChatPanel() {
   const [loading, setLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [agentMemories, setAgentMemories] = useState<string>("");
+  const [personalMems, setPersonalMems] = useState<string>("");
+  const [recentTopics, setRecentTopics] = useState<string>("");
   const [activeMoment, setActiveMoment] = useState<MomentVivantScenario | null>(null);
+  const [tierUnlock, setTierUnlock] = useState<{ tierLabel: string; newLevel: number } | null>(null);
   const [momentTriggering, setMomentTriggering] = useState(false);
   const [momentCooldownUntil, setMomentCooldownUntil] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -127,6 +133,8 @@ export function ChatPanel() {
         const memories = await getAgentMemories(agentData.slug);
         const formatted = formatMemoriesForPrompt(memories);
         setAgentMemories(formatted);
+        setPersonalMems(formatPersonalMemories(memories));
+        setRecentTopics(formatRecentTopics(memories));
 
         const conv = await initConversation(
           agentData.slug,
@@ -243,18 +251,29 @@ export function ChatPanel() {
           agentMemories
         );
       } else {
-        reply = await generateAIReply(
+        const result = await generateAIReply(
           {
             name: agent.name,
+            slug: agent.slug,
             role: agent.role,
             personalityPrimary: agent.personality_primary,
             personalityNuance: agent.personality_nuance ?? "",
             backstory: agent.backstory ?? "",
+            confidenceLevel: agent.confidence_level ?? 0,
           },
           history,
           content,
-          agentMemories
+          agentMemories,
+          personalMems,
+          recentTopics,
         );
+        reply = result.message;
+        if (result.unlockedTier && result.newConfidenceLevel !== undefined) {
+          setAgent((prev) => prev ? { ...prev, confidence_level: result.newConfidenceLevel } : prev);
+          setTierUnlock({ tierLabel: result.unlockedTier, newLevel: result.newConfidenceLevel });
+        } else if (result.newConfidenceLevel !== undefined) {
+          setAgent((prev) => prev ? { ...prev, confidence_level: result.newConfidenceLevel } : prev);
+        }
       }
 
       const agentMsg = await sendMessage(
@@ -293,12 +312,14 @@ export function ChatPanel() {
               );
               const updated = await getAgentMemories(agent.slug);
               setAgentMemories(formatMemoriesForPrompt(updated));
+              setPersonalMems(formatPersonalMemories(updated));
+              setRecentTopics(formatRecentTopics(updated));
             }
           }
         );
       }
     },
-    [agent, conversation, agentMemories]
+    [agent, conversation, agentMemories, personalMems, recentTopics]
   );
 
   const handleTriggerMoment = useCallback(async () => {
@@ -398,6 +419,19 @@ export function ChatPanel() {
           gradient={gradient}
           initials={initials}
           onClose={() => setActiveMoment(null)}
+        />
+      )}
+
+      {/* Tier unlock VN popup */}
+      {tierUnlock && agent && (
+        <TierUnlockPopup
+          tierLabel={tierUnlock.tierLabel}
+          newLevel={tierUnlock.newLevel}
+          agentName={agent.name}
+          agentPersonality={agent.personality_primary}
+          agentImageUrl={agent.icon_url}
+          agentGradient={gradient}
+          onClose={() => setTierUnlock(null)}
         />
       )}
 

@@ -16,16 +16,37 @@ export const genders: { id: Gender; label: string; emoji: string }[] = [
   { id: "femme", label: "Femme", emoji: "♀️" },
 ];
 
-export const personalities: { id: PersonalityTrait; label: string; emoji: string; description: string }[] = [
-  { id: "chaleureuse", label: "Chaleureuse", emoji: "🌸", description: "Douce, encourageante, bienveillante" },
-  { id: "froide", label: "Froide", emoji: "🧊", description: "Distante, factuelle, efficace" },
-  { id: "dragueuse", label: "Dragueuse", emoji: "💋", description: "Charmeuse, flirty, séductrice" },
-  { id: "jalouse", label: "Jalouse", emoji: "💚", description: "Possessive, compétitive, susceptible" },
-  { id: "sarcastique", label: "Sarcastique", emoji: "😏", description: "Pince-sans-rire, ironique, mordante" },
-  { id: "timide", label: "Timide", emoji: "👉👈", description: "Réservée, hésitante, adorable" },
-  { id: "arrogante", label: "Arrogante", emoji: "👑", description: "Sûre d'elle, condescendante, brillante" },
-  { id: "geek-obsessionnelle", label: "Geek Obsessionnelle", emoji: "🤓", description: "Passionnée, références pop culture, intense" },
-  { id: "mysterieuse", label: "Mystérieuse", emoji: "🔮", description: "Énigmatique, cryptique, fascinante" },
+export const personalities: { id: PersonalityTrait; label: string; emoji: string; description: string; famille: string }[] = [
+  // Sociale
+  { id: "empathique",     label: "Empathique",     emoji: "💙", description: "Attentionnée, à l'écoute, ressent les émotions des autres",  famille: "Sociale" },
+  { id: "maternelle",     label: "Maternelle",     emoji: "🤍", description: "Protectrice, rassurante, prend soin de tout le monde",        famille: "Sociale" },
+  { id: "distante",       label: "Distante",       emoji: "🧊", description: "Froide, factuelle, garde ses distances",                      famille: "Sociale" },
+  { id: "manipulatrice",  label: "Manipulatrice",  emoji: "🕸️", description: "Calculatrice, stratège, toujours deux longueurs d'avance",    famille: "Sociale" },
+  { id: "possessive",     label: "Possessive",     emoji: "🔒", description: "Jalouse de son territoire, surveille, retient",               famille: "Sociale" },
+  // Émotionnelle
+  { id: "melancolique",   label: "Mélancolique",   emoji: "🌧️", description: "Nostalgique, profonde, porte un poids invisible",             famille: "Émotionnelle" },
+  { id: "optimiste",      label: "Optimiste",      emoji: "🌟", description: "Lumineuse, voit toujours le bon côté, entraînante",           famille: "Émotionnelle" },
+  { id: "impulsive",      label: "Impulsive",      emoji: "⚡", description: "Réagit vite, sans filtre, intense et spontanée",              famille: "Émotionnelle" },
+  { id: "stoique",        label: "Stoïque",        emoji: "🗿", description: "Impassible, contrôlée, ne montre rien",                       famille: "Émotionnelle" },
+  { id: "vulnerable",     label: "Vulnérable",     emoji: "🥺", description: "Sensible, hésitante, s'ouvre rarement mais profondément",     famille: "Émotionnelle" },
+  // Intellectuelle
+  { id: "perfectionniste",label: "Perfectionniste",emoji: "🎯", description: "Exigeante, rigoureuse, l'à-peu-près l'énerve",               famille: "Intellectuelle" },
+  { id: "curieuse",       label: "Curieuse",       emoji: "🔍", description: "Pose des questions, explore, s'intéresse à tout",             famille: "Intellectuelle" },
+  { id: "analytique",     label: "Analytique",     emoji: "📊", description: "Rationnelle, structurée, pense en données et schémas",        famille: "Intellectuelle" },
+  { id: "creative",       label: "Créative",       emoji: "🎨", description: "Déborde d'idées, pense hors cadre, fait des connexions folles",famille: "Intellectuelle" },
+  { id: "dispersee",      label: "Dispersée",      emoji: "💨", description: "Part dans tous les sens, oublie, rebondit sans prévenir",     famille: "Intellectuelle" },
+  // Relationnelle
+  { id: "loyale",         label: "Loyale",         emoji: "🛡️", description: "Fiable, indéfectible, ne lâche jamais ceux qu'elle aime",    famille: "Relationnelle" },
+  { id: "jalouse",        label: "Jalouse",        emoji: "💚", description: "Possessive, susceptible, compare en permanence",              famille: "Relationnelle" },
+  { id: "rivale",         label: "Rivale",         emoji: "🏆", description: "Compétitive, veut toujours être la meilleure",               famille: "Relationnelle" },
+  { id: "admirative",     label: "Admirative",     emoji: "🤩", description: "S'enthousiasme facilement, met sur un piédestal",            famille: "Relationnelle" },
+  { id: "rebelle",        label: "Rebelle",        emoji: "🔥", description: "Conteste, refuse l'autorité, fait à sa façon",               famille: "Relationnelle" },
+  // Caractère
+  { id: "dominante",      label: "Dominante",      emoji: "👑", description: "Sûre d'elle, prend le contrôle, légèrement condescendante",  famille: "Caractère" },
+  { id: "soumise",        label: "Soumise",        emoji: "🌿", description: "Efface ses besoins, cherche l'approbation, difficile à lire", famille: "Caractère" },
+  { id: "franche",        label: "Franche",        emoji: "🗣️", description: "Dit ce qu'elle pense, sans détour, parfois trop directe",    famille: "Caractère" },
+  { id: "mysterieuse",    label: "Mystérieuse",    emoji: "🔮", description: "Énigmatique, cryptique, révèle peu d'elle-même",             famille: "Caractère" },
+  { id: "provocatrice",   label: "Provocatrice",   emoji: "😏", description: "Aime titiller, tester les limites, créer des étincelles",    famille: "Caractère" },
 ];
 
 export const appearanceOptions = {

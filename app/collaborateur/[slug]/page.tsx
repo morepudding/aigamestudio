@@ -19,6 +19,7 @@ import {
   MessageCircle,
   Brain,
   Heart,
+  Image as ImageIcon,
   Lightbulb,
   TrendingUp,
   Users,
@@ -50,6 +51,7 @@ interface AgentDetail {
   gender: string;
   personality_primary: string;
   personality_nuance: string;
+  personality_extras: string | null;
   status: string;
   assigned_project: string;
   tasks: Task[];
@@ -60,6 +62,8 @@ interface AgentDetail {
   confidence_level: number | null;
 }
 
+
+
 const memoryTypeConfig: Record<MemoryType, { icon: React.ElementType; label: string; color: string }> = {
   summary: { icon: Brain, label: "Résumé", color: "text-violet-400" },
   preference: { icon: Heart, label: "Préférences", color: "text-pink-400" },
@@ -69,7 +73,27 @@ const memoryTypeConfig: Record<MemoryType, { icon: React.ElementType; label: str
   nickname: { icon: Tag, label: "Surnoms", color: "text-cyan-400" },
   confidence: { icon: Shield, label: "Confiance", color: "text-rose-400" },
   boss_profile: { icon: Brain, label: "Profil boss", color: "text-indigo-400" },
+  family: { icon: Users, label: "Famille", color: "text-fuchsia-400" },
+  hobbies: { icon: Heart, label: "Hobbies", color: "text-orange-400" },
+  dreams: { icon: Sparkles, label: "Rêves", color: "text-sky-400" },
+  social: { icon: Users, label: "Vie sociale", color: "text-lime-400" },
+  fears: { icon: Shield, label: "Peurs", color: "text-red-400" },
+  personal_event: { icon: Lightbulb, label: "Événements personnels", color: "text-teal-400" },
+  topic_tracker: { icon: Tag, label: "Sujets suivis", color: "text-amber-300" },
 };
+
+const defaultMemoryTypeConfig = {
+  icon: Brain,
+  label: "Autre",
+  color: "text-muted-foreground",
+} as const;
+
+function prettyMemoryTypeLabel(type: string) {
+  return type
+    .split("_")
+    .join(" ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
 
 const moodDisplay: Record<string, { emoji: string; label: string; color: string; bg: string }> = {
   neutre: { emoji: "😐", label: "Neutre", color: "text-gray-400", bg: "bg-gray-500/10 border-gray-500/20" },
@@ -134,6 +158,8 @@ export default function AgentDetailPage() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [personalityBio, setPersonalityBio] = useState("");
+  const [phrasesLoading, setPhrasesLoading] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -152,10 +178,58 @@ export default function AgentDetailPage() {
         setAgent(agentData);
         setMemories(memoriesData);
         setImageVersion(Date.now());
+        // Fetch AI personality phrases
+        fetchPersonalityPhrases(agentData);
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  const fetchPersonalityPhrases = async (agentData: AgentDetail) => {
+    const traits: { trait: string; label: string; emoji: string; role: "primary" | "nuance" | "secondary" }[] = [];
+
+    const addTrait = (field: string | null, role: "primary" | "nuance" | "secondary") => {
+      if (!field) return;
+      parsePersonalityTraits(field).forEach((traitId) => {
+        const match = personalities.find((p) => p.id === traitId);
+        if (match) {
+          traits.push({ trait: traitId, label: match.label, emoji: match.emoji, role });
+        } else {
+          traits.push({ trait: traitId, label: traitId.charAt(0).toUpperCase() + traitId.slice(1), emoji: "✦", role });
+        }
+      });
+    };
+
+    addTrait(agentData.personality_primary, "primary");
+    addTrait(agentData.personality_nuance, "nuance");
+    if (agentData.personality_extras) {
+      addTrait(agentData.personality_extras, "secondary");
+    }
+
+    if (traits.length === 0) return;
+
+    setPhrasesLoading(true);
+    try {
+      const res = await fetch("/api/ai/personality-phrases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentName: agentData.name,
+          agentRole: agentData.role,
+          department: agentData.department,
+          traits,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPersonalityBio(data.bio ?? "");
+      }
+    } catch {
+      // silently fail — UI degrades to badges
+    } finally {
+      setPhrasesLoading(false);
+    }
+  };
 
   const handleRegenerateVisual = async (target: "portrait" | "icon" | "both") => {
     if (!agent || regenerating) return;
@@ -233,7 +307,7 @@ export default function AgentDetailPage() {
 
   // Build personality badge tokens — handle both known IDs and free-form comma lists
   const personalityBadges: { emoji: string; label: string }[] = [];
-  for (const field of [agent.personality_primary, agent.personality_nuance]) {
+  for (const field of [agent.personality_primary, agent.personality_nuance, agent.personality_extras]) {
     if (!field) continue;
     const known = personalities.find((p) => p.id === field);
     if (known) {
@@ -255,15 +329,15 @@ export default function AgentDetailPage() {
   const isGeneratingIcon = regenerating === "icon" || regenerating === "both";
 
   // Group memories by type
-  const memoriesByType = memories.reduce<Record<MemoryType, AgentMemory[]>>(
+  const memoriesByType = memories.reduce<Record<string, AgentMemory[]>>(
     (acc, m) => {
       if (!acc[m.memory_type]) acc[m.memory_type] = [];
       acc[m.memory_type].push(m);
       return acc;
     },
-    {} as Record<MemoryType, AgentMemory[]>
+    {}
   );
-  const memoryTypes = Object.keys(memoriesByType) as MemoryType[];
+  const memoryTypes = Object.keys(memoriesByType);
 
   const mood = agent.mood ? (moodDisplay[agent.mood] ?? moodDisplay.neutre) : null;
 
@@ -310,19 +384,35 @@ export default function AgentDetailPage() {
                 })()}
               </div>
 
-              {/* Personality — injecté dans le prompt */}
+              {/* Personality traits — injectés dans le prompt */}
               {personalityBadges.length > 0 && (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground/50 flex items-center gap-1">
                     <span className="text-violet-400">⚡</span> Personnalité — injecté dans le prompt
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  {/* Trait badges */}
+                  <div className="flex flex-wrap gap-1.5">
                     {personalityBadges.map((b, i) => (
-                      <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-sm text-violet-300">
+                      <span key={i} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs text-violet-300">
                         {b.emoji} {b.label}
                       </span>
                     ))}
                   </div>
+                  {/* Bio paragraphs */}
+                  {phrasesLoading ? (
+                    <div className="space-y-2 animate-pulse">
+                      <div className="h-2.5 bg-white/10 rounded w-full" />
+                      <div className="h-2.5 bg-white/10 rounded w-5/6" />
+                      <div className="h-2.5 bg-white/10 rounded w-full" />
+                      <div className="h-2.5 bg-white/10 rounded w-4/5" />
+                    </div>
+                  ) : personalityBio ? (
+                    <div className="space-y-2 border-t border-violet-500/15 pt-2">
+                      {personalityBio.split(/\n+/).filter(Boolean).map((para, i) => (
+                        <p key={i} className="text-sm text-muted-foreground leading-relaxed italic">{para}</p>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -372,6 +462,13 @@ export default function AgentDetailPage() {
               >
                 <MessageCircle className="w-4 h-4" />
                 Démarrer une conversation
+              </Link>
+              <Link
+                href={`/collaborateur/${agent.slug}/galerie`}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-sm font-bold text-white transition-colors"
+              >
+                <ImageIcon className="w-4 h-4" />
+                Galerie photo
               </Link>
               {(agent.status === "recruté" || agent.status === "onboarding") && (
                 <a
@@ -466,7 +563,10 @@ export default function AgentDetailPage() {
               </div>
               <div className="space-y-5">
                 {memoryTypes.map((type) => {
-                  const cfg = memoryTypeConfig[type];
+                  const cfg = memoryTypeConfig[type as MemoryType] ?? {
+                    ...defaultMemoryTypeConfig,
+                    label: prettyMemoryTypeLabel(type),
+                  };
                   const Icon = cfg.icon;
                   const items = memoriesByType[type];
                   return (
@@ -658,8 +758,8 @@ export default function AgentDetailPage() {
 
             <p className="text-sm text-muted-foreground leading-relaxed">
               {agent.slug === "eve"
-                ? <>Réinitialiser Eve effacera <span className="text-white font-medium">tout ce qu'elle sait de toi</span> et relancera la fondation du studio depuis le début. Tous les autres accès seront bloqués jusqu'à complétion.</>
-                : <>Réinitialiser la mémoire de <span className="text-white font-medium">{agent.name}</span> supprimera tous ses souvenirs de toi et relancera l'onboarding depuis le début.</>
+                ? <>Réinitialiser Eve effacera <span className="text-white font-medium">tout ce qu&apos;elle sait de toi</span> et relancera la fondation du studio depuis le début. Tous les autres accès seront bloqués jusqu&apos;à complétion.</>
+                : <>Réinitialiser la mémoire de <span className="text-white font-medium">{agent.name}</span> supprimera tous ses souvenirs de toi et relancera l&apos;onboarding depuis le début.</>
               }
             </p>
 

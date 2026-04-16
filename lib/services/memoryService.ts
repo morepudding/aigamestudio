@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabase/client";
 
-export type MemoryType = "summary" | "decision" | "preference" | "progress" | "relationship" | "nickname" | "confidence" | "boss_profile";
+export type MemoryType =
+  | "summary" | "decision" | "preference" | "progress"
+  | "relationship" | "nickname" | "confidence" | "boss_profile"
+  | "family" | "hobbies" | "dreams" | "social" | "fears"
+  | "personal_event" | "topic_tracker";
 
 /**
  * Singleton types: only one entry per agent is kept.
@@ -255,7 +259,47 @@ function memoryTypeLabel(type: MemoryType): string {
     case "nickname": return "Surnoms";
     case "confidence": return "Évolution de la confiance";
     case "boss_profile": return "Ce que tu sais de lui (vie perso, goûts, habitudes)";
+    case "family": return "Ma famille & origines";
+    case "hobbies": return "Mes passions & hobbies";
+    case "dreams": return "Mes rêves & aspirations";
+    case "social": return "Mes amis & vie sociale";
+    case "fears": return "Mes peurs & vulnérabilités";
+    case "personal_event": return "Événements récents de ma vie";
+    case "topic_tracker": return "Sujets récemment abordés";
   }
+}
+
+/** Personal life memory types — agent's own life details. */
+const PERSONAL_LIFE_TYPES: MemoryType[] = ["family", "hobbies", "dreams", "social", "fears", "personal_event"];
+
+/**
+ * Format only personal-life memories for the dedicated prompt block.
+ */
+export function formatPersonalMemories(memories: AgentMemory[]): string {
+  const personal = memories.filter((m) => PERSONAL_LIFE_TYPES.includes(m.memory_type));
+  if (personal.length === 0) return "";
+
+  const grouped: Record<string, string[]> = {};
+  for (const mem of personal) {
+    const label = memoryTypeLabel(mem.memory_type);
+    if (!grouped[label]) grouped[label] = [];
+    grouped[label].push(mem.content);
+  }
+
+  return Object.entries(grouped)
+    .map(([label, items]) => `[${label}]\n${items.map((i) => `- ${i}`).join("\n")}`)
+    .join("\n\n");
+}
+
+/**
+ * Format topic tracker memories as a simple list for anti-repetition context.
+ */
+export function formatRecentTopics(memories: AgentMemory[]): string {
+  const topics = memories
+    .filter((m) => m.memory_type === "topic_tracker")
+    .slice(0, 10);
+  if (topics.length === 0) return "";
+  return topics.map((t) => `- ${t.content}`).join("\n");
 }
 
 

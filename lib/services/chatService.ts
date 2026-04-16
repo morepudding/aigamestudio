@@ -365,6 +365,7 @@ export function getRandomReply(personalityPrimary: string): string {
 export async function generateAIReply(
   agent: {
     name: string;
+    slug?: string;
     role: string;
     personalityPrimary: string;
     personalityNuance: string;
@@ -375,8 +376,11 @@ export async function generateAIReply(
   },
   conversationHistory: { sender: string; content: string }[],
   userMessage: string,
-  memories?: string
-): Promise<string> {
+  memories?: string,
+  personalMemories?: string,
+  recentTopics?: string,
+  usedDeckCardIds?: string[],
+): Promise<{ message: string; deckCardIds?: string[]; newConfidenceLevel?: number; unlockedTier?: string }> {
   try {
     const res = await fetch("/api/ai/reply", {
       method: "POST",
@@ -388,20 +392,29 @@ export async function generateAIReply(
         personalityNuance: agent.personalityNuance,
         backstory: agent.backstory,
         memories,
+        personalMemories,
+        recentTopics,
         conversationHistory,
         userMessage,
         mood: agent.mood,
         moodCause: agent.moodCause,
         confidenceLevel: agent.confidenceLevel,
+        agentSlug: agent.slug,
+        usedDeckCardIds,
       }),
     });
     if (!res.ok) throw new Error("API error");
     const data = await res.json();
-    if (data.message) return data.message as string;
+    if (data.message) return {
+      message: data.message as string,
+      deckCardIds: data.deckCardIds,
+      newConfidenceLevel: data.newConfidenceLevel,
+      unlockedTier: data.unlockedTier,
+    };
   } catch {
     // fall through to fallback
   }
-  return getRandomReply(agent.personalityPrimary);
+  return { message: getRandomReply(agent.personalityPrimary) };
 }
 
 // ─── Memory extraction from conversation ─────────────────────────────────────

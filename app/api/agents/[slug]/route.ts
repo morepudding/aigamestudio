@@ -54,7 +54,7 @@ export async function PATCH(
   // Validate confidence_level if provided
   if (updates.confidence_level !== undefined) {
     const cl = Number(updates.confidence_level);
-    if (isNaN(cl) || cl < 0 || cl > 100) {
+    if (isNaN(cl) || cl < 0 || cl > 300) {
       return NextResponse.json({ error: "Invalid confidence_level" }, { status: 400 });
     }
     updates.confidence_level = cl;

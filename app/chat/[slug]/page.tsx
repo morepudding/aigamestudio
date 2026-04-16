@@ -16,6 +16,8 @@ import {
 import {
   getAgentMemories,
   formatMemoriesForPrompt,
+  formatPersonalMemories,
+  formatRecentTopics,
   buildMemoriesByType,
   saveAgentMemories,
   MemoryType,
@@ -47,6 +49,8 @@ export default function ChatSlugPage() {
   const [loading, setLoading] = useState(true);
   const [isTyping, setIsTyping] = useState(false);
   const [agentMemories, setAgentMemories] = useState<string>("");
+  const [personalMems, setPersonalMems] = useState<string>("");
+  const [recentTopics, setRecentTopics] = useState<string>("");
   const [memoriesByType, setMemoriesByType] = useState<Record<string, string>>({});
 
   // Load agent + conversation
@@ -65,6 +69,8 @@ export default function ChatSlugPage() {
         const memories = await getAgentMemories(agentData.slug);
         const formatted = formatMemoriesForPrompt(memories);
         setAgentMemories(formatted);
+        setPersonalMems(formatPersonalMemories(memories));
+        setRecentTopics(formatRecentTopics(memories));
         setMemoriesByType(buildMemoriesByType(memories));
 
         // Init or get conversation
@@ -177,9 +183,10 @@ export default function ChatSlugPage() {
           memories
         );
       } else {
-        reply = await generateAIReply(
+        const result = await generateAIReply(
           {
             name: agent.name,
+            slug: agent.slug,
             role: agent.role,
             personalityPrimary: agent.personality_primary,
             personalityNuance: agent.personality_nuance ?? "",
@@ -190,8 +197,11 @@ export default function ChatSlugPage() {
           },
           history,
           content,
-          memories
+          memories,
+          personalMems,
+          recentTopics,
         );
+        reply = result.message;
       }
 
       // Split multi-bubble messages (|||) and send each as a separate message
@@ -245,6 +255,8 @@ export default function ChatSlugPage() {
             );
             const updated = await getAgentMemories(agent.slug);
             setAgentMemories(formatMemoriesForPrompt(updated));
+            setPersonalMems(formatPersonalMemories(updated));
+            setRecentTopics(formatRecentTopics(updated));
             setMemoriesByType(buildMemoriesByType(updated));
 
             // Update confidence based on confidence memories

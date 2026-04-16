@@ -11,25 +11,44 @@ export type Department =
 export type Gender = "homme" | "femme";
 
 export type PersonalityTrait =
-  | "chaleureuse"
-  | "froide"
-  | "dragueuse"
+  // Sociale
+  | "empathique"
+  | "maternelle"
+  | "distante"
+  | "manipulatrice"
+  | "possessive"
+  // Émotionnelle
+  | "melancolique"
+  | "optimiste"
+  | "impulsive"
+  | "stoique"
+  | "vulnerable"
+  // Intellectuelle
+  | "perfectionniste"
+  | "curieuse"
+  | "analytique"
+  | "creative"
+  | "dispersee"
+  // Relationnelle
+  | "loyale"
   | "jalouse"
-  | "sarcastique"
-  | "timide"
-  | "arrogante"
-  | "geek-obsessionnelle"
-  | "mysterieuse"
-  | "directe"
-  | "cool"
+  | "rivale"
+  | "admirative"
+  | "rebelle"
+  // Caractère
+  | "dominante"
+  | "soumise"
   | "franche"
-  | "focus";
+  | "mysterieuse"
+  | "provocatrice";
 
 /** All valid single-word personality trait identifiers. */
 export const VALID_PERSONALITY_TRAITS = new Set<string>([
-  "chaleureuse", "froide", "dragueuse", "jalouse", "sarcastique",
-  "timide", "arrogante", "geek-obsessionnelle", "mysterieuse",
-  "directe", "cool", "franche", "focus",
+  "empathique", "maternelle", "distante", "manipulatrice", "possessive",
+  "melancolique", "optimiste", "impulsive", "stoique", "vulnerable",
+  "perfectionniste", "curieuse", "analytique", "creative", "dispersee",
+  "loyale", "jalouse", "rivale", "admirative", "rebelle",
+  "dominante", "soumise", "franche", "mysterieuse", "provocatrice",
 ]);
 
 /**
@@ -54,6 +73,7 @@ export function isValidPersonalityField(raw: string): boolean {
 export interface PersonalityMix {
   primary: PersonalityTrait;
   nuance: PersonalityTrait;
+  extras: [PersonalityTrait, PersonalityTrait];
 }
 
 export interface AppearanceFemme {

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, Send, ChevronRight, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { BrainstormingMessage, BrainstormingSession } from "@/lib/types/brainstorming";
 import type { Agent } from "@/lib/services/agentService";
 import type { Project } from "@/lib/types/project";
@@ -97,7 +99,45 @@ function MessageBubble({
           )}
         </div>
         <div className="bg-white/5 border border-white/8 rounded-2xl rounded-tl-sm px-4 py-3">
-          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+          <div className="text-sm text-foreground leading-relaxed">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-2">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-2">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-medium mt-2 mb-1.5">{children}</h3>,
+                ul: ({ children }) => <ul className="list-disc pl-5 mb-3 last:mb-0 space-y-1">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 last:mb-0 space-y-1">{children}</ol>,
+                li: ({ children }) => <li>{children}</li>,
+                code: ({ children }) => (
+                  <code className="px-1 py-0.5 rounded bg-white/10 text-xs">{children}</code>
+                ),
+                pre: ({ children }) => (
+                  <pre className="bg-white/10 border border-white/10 rounded-lg p-3 overflow-x-auto mb-3 last:mb-0">
+                    {children}
+                  </pre>
+                ),
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-2 border-white/20 pl-3 italic text-muted-foreground mb-3 last:mb-0">
+                    {children}
+                  </blockquote>
+                ),
+                a: ({ children, href }) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>

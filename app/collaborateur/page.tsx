@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Users, UserPlus, Info, Trash2 } from "lucide-react";
+import { Users, UserPlus, Info, Trash2, Image as ImageIcon } from "lucide-react";
 import { projects } from "@/lib/data/projects";
 import { departments } from "@/lib/wizard-data";
 import { useEffect, useState } from "react";
@@ -80,21 +80,30 @@ export default function CollaborateurPage() {
             Gérez l&apos;équipe de votre studio et attribuez les rôles.
           </p>
         </div>
-        <Link
-          href="/collaborateur/recruter"
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-primary/20 w-full sm:w-auto"
-        >
-          <UserPlus className="w-4 h-4" />
-          Recruter un agent IA
-        </Link>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Link
+            href="/collaborateur/galerie"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-colors"
+          >
+            <ImageIcon className="w-4 h-4" />
+            Galerie photos
+          </Link>
+          <Link
+            href="/collaborateur/recruter"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-primary/20"
+          >
+            <UserPlus className="w-4 h-4" />
+            Recruter un agent IA
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {/* Admin card */}
         <div className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 hover:bg-white/10 transition-colors overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-50" />
+          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-50" />
           <div className="flex items-start gap-3 md:gap-4 mb-4 md:mb-6">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg flex-shrink-0 text-white font-bold text-lg">
+            <div className="w-12 h-12 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0 text-white font-bold text-lg">
               RM
             </div>
             <div>
@@ -128,7 +137,7 @@ export default function CollaborateurPage() {
               key={agent.slug}
               className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 hover:bg-white/10 transition-colors overflow-hidden"
             >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-transparent opacity-50" />
+              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-50" />
 
               {/* Delete button — hidden for system agents */}
               {!agent.is_system_agent && (

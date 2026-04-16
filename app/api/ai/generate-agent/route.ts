@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     .map(([key, val]) => `${key}: ${val}`)
     .join(", ");
 
-  const personalityDesc = `${personality.primary} (dominante) avec une nuance de ${personality.nuance}`;
+  const personalityDesc = `${personality.primary} (dominante), nuancée par ${personality.nuance}, avec des traits secondaires : ${personality.extras?.join(", ") ?? ""}`.trim();
 
   const prompt = `Génère la configuration d'un agent au format YAML :
 - Nom : ${name}
@@ -53,6 +53,7 @@ ${sanitizeName(name || "agent")}:
     ...
   personality_primary: ${personality.primary}
   personality_nuance: ${personality.nuance}
+  personality_extras: ${personality.extras?.join(", ") ?? ""}
   gender: ${gender}
   department: ${department}
   status: recruté
@@ -158,6 +159,7 @@ task_name:
         appearance_prompt: agentData.appearance_prompt?.trim() ?? "",
         personality_primary: agentData.personality_primary?.trim() ?? (draft.personality?.primary ?? ""),
         personality_nuance: agentData.personality_nuance?.trim() ?? (draft.personality?.nuance ?? ""),
+        personality_extras: agentData.personality_extras?.trim() ?? (draft.personality?.extras?.join(", ") ?? null),
         gender: agentData.gender?.trim() ?? (draft.gender ?? ""),
         department: agentData.department?.trim() ?? (draft.department ?? ""),
         status: "recruté",

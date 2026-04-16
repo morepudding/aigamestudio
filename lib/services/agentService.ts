@@ -49,6 +49,7 @@ export interface Agent {
   appearance_prompt: string;
   personality_primary: string;
   personality_nuance: string;
+  personality_extras: string | null;
   gender: string;
   department: string;
   status: string;
@@ -111,6 +112,7 @@ export async function createAgent(
     appearance_prompt: agent.appearance_prompt,
     personality_primary: agent.personality_primary,
     personality_nuance: agent.personality_nuance,
+    personality_extras: agent.personality_extras ?? null,
     gender: agent.gender,
     department: agent.department,
     status: agent.status,
@@ -144,12 +146,12 @@ export async function updateAgentFields(
 }
 
 /**
- * Increase an agent's confidence level by a given amount (capped at 100).
+ * Increase an agent's confidence level by a given amount (capped at 300).
  */
 export async function increaseConfidence(slug: string, amount: number): Promise<number> {
   const agent = await getAgentBySlug(slug);
   if (!agent) return 0;
-  const newLevel = Math.min(100, (agent.confidence_level ?? 0) + amount);
+  const newLevel = Math.min(300, (agent.confidence_level ?? 0) + amount);
   await updateAgentFields(slug, { confidence_level: newLevel });
   return newLevel;
 }

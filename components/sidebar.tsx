@@ -176,22 +176,7 @@ export function Sidebar() {
                   )}
                 </Link>
 
-                {/* Emotional hint - Dating sim style */}
-                {isChatWithNotif && notification.agentName && notification.hint && (
-                  <div className="ml-10 mt-1 mb-2 animate-in slide-in-from-left-2 fade-in duration-500">
-                    <p
-                      className={`text-[11px] italic leading-tight ${
-                        notification.intensity === "high"
-                          ? "text-rose-400/80"
-                          : notification.intensity === "medium"
-                            ? "text-amber-400/80"
-                            : "text-muted-foreground/70"
-                      }`}
-                    >
-                      {notification.agentName} {notification.hint}...
-                    </p>
-                  </div>
-                )}
+
               </div>
             );
           })}

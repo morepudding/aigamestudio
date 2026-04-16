@@ -4,6 +4,7 @@
 
 import type { Agent } from "@/lib/services/agentService";
 import type { Project } from "@/lib/types/project";
+import type { LLMMessage } from "@/lib/config/llm";
 
 // ============================================================
 // Fixed template questions per phase
@@ -34,6 +35,13 @@ export const ART_QUESTIONS: TemplateQuestion[] = [
   { key: "art_mood", text: "Quelle ambiance ou émotion principale veux-tu que le joueur ressente ?" },
   { key: "art_style", text: "Quel style visuel imaginais-tu ? (pixel art, low-poly, cartoon, réaliste, abstrait…)" },
   { key: "art_references", text: "Des jeux ou œuvres qui t'inspirent visuellement / artistiquement pour ce projet ?" },
+];
+
+// All questions merged (excluding opening gd_concept which is always asked first)
+export const ALL_BRAINSTORMING_QUESTIONS: TemplateQuestion[] = [
+  ...GAME_DESIGN_QUESTIONS.slice(1), // gd_concept is the opening question
+  ...PROGRAMMING_QUESTIONS,
+  ...ART_QUESTIONS,
 ];
 
 // ============================================================
@@ -84,17 +92,99 @@ export function buildNextQuestionPrompt(
   phase: string,
   question: TemplateQuestion,
   conversationSoFar: string
-): string {
-  return `Tu es ${agent.name}, ${agent.role}. Personnalité : ${agent.personality_primary}.
-
-Voici la conversation jusqu'ici :
+): LLMMessage[] {
+  return [
+    {
+      role: "system",
+      content: `Tu es ${agent.name}, ${agent.role}. Personnalité : ${agent.personality_primary}${agent.personality_nuance ? `, ${agent.personality_nuance}` : ""}. Tu mènes un brainstorming de jeu vidéo. Réponds toujours en français, 1-3 phrases max, dans ton style de personnage.`,
+    },
+    {
+      role: "user",
+      content: `Voici la conversation jusqu'ici :
 ${conversationSoFar}
 
-Pose maintenant cette prochaine question, dans ton style et ton personnage :
+Pose cette prochaine question dans ton style et ton personnage :
 "${question.text}"
 
-Commente brièvement la réponse précédente (1 phrase max, dans ton style), puis pose la question.
-Sois naturel, reste dans le personnage. 1-3 phrases au total. Français.`;
+Commente brièvement la réponse précédente (1 phrase max, dans ton style), puis pose la question. 1-3 phrases au total.`,
+    },
+  ];
+}
+
+// ============================================================
+// Adaptive brainstorming: filter & adapt questions based on context
+// ============================================================
+
+export function buildAdaptiveFilterPrompt(
+  agent: Agent,
+  project: Project,
+  transcript: string
+): LLMMessage[] {
+  const allQuestionsText = ALL_BRAINSTORMING_QUESTIONS
+    .map((q, i) => `${i + 1}. [${q.key}] ${q.text}`)
+    .join("\n");
+
+  return [
+    {
+      role: "system",
+      content: `Tu es un game producer senior. Tu analyses un brainstorming en cours et tu crées un plan de questions adapté à la complexité du projet. Tu ne poses JAMAIS une question dont la réponse est déjà évidente dans la conversation.`,
+    },
+    {
+      role: "user",
+      content: `Projet : "${project.title}"${project.description ? ` — ${project.description}` : ""}
+
+Conversation jusqu'ici :
+${transcript}
+
+Voici TOUTES les questions possibles à poser :
+${allQuestionsText}
+
+TÂCHE :
+1. Évalue la complexité du projet : "simple" / "moyen" / "ambitieux"
+2. SUPPRIME les questions dont la réponse est déjà claire ou implicite dans la conversation
+3. REFORMULE les questions restantes pour qu'elles soient adaptées au contexte spécifique
+4. Règles selon la complexité :
+   - SIMPLE (prototype, MVP, test) : 2-4 questions max, très ciblées
+   - MOYEN : 4-6 questions
+   - AMBITIEUX : 6-8 questions
+
+Réponds en JSON pur, sans markdown :
+{
+  "complexity": "simple",
+  "questions": [
+    { "key": "adapted_1", "text": "Question reformulée et pertinente..." },
+    { "key": "adapted_2", "text": "..." }
+  ]
+}`,
+    },
+  ];
+}
+
+// ============================================================
+// System prompt: Adaptive question — ask next adapted question
+// ============================================================
+
+export function buildAdaptiveQuestionPrompt(
+  agent: Agent,
+  question: TemplateQuestion,
+  conversationSoFar: string
+): LLMMessage[] {
+  return [
+    {
+      role: "system",
+      content: `Tu es ${agent.name}, ${agent.role}. Personnalité : ${agent.personality_primary}${agent.personality_nuance ? `, ${agent.personality_nuance}` : ""}. Tu mènes un brainstorming de jeu vidéo. Réponds toujours en français, 1-3 phrases max, dans ton style.`,
+    },
+    {
+      role: "user",
+      content: `Conversation jusqu'ici :
+${conversationSoFar}
+
+Réagis brièvement à la dernière réponse (1 phrase max), puis pose cette question :
+"${question.text}"
+
+1-3 phrases au total. Sois naturel et reste dans le personnage.`,
+    },
+  ];
 }
 
 // ============================================================
@@ -133,17 +223,23 @@ export function buildDynamicQuestionAskPrompt(
   agent: Agent,
   question: TemplateQuestion,
   conversationSoFar: string
-): string {
-  return `Tu es ${agent.name}, ${agent.role}. Personnalité : ${agent.personality_primary}.
-
-Conversation jusqu'ici :
+): LLMMessage[] {
+  return [
+    {
+      role: "system",
+      content: `Tu es ${agent.name}, ${agent.role}. Personnalité : ${agent.personality_primary}${agent.personality_nuance ? `, ${agent.personality_nuance}` : ""}. Tu mènes un brainstorming de jeu vidéo. Réponds toujours en français, 2-3 phrases max, dans ton style de personnage.`,
+    },
+    {
+      role: "user",
+      content: `Conversation jusqu'ici :
 ${conversationSoFar}
 
-Tu poses maintenant une question de suivi pour mieux cerner le scope du projet.
-Pose cette question dans ton style :
+Pose cette question de suivi dans ton style pour mieux cerner le scope du projet :
 "${question.text}"
 
-Introduis-la naturellement (1 phrase), puis pose-la. 2-3 phrases max. Français.`;
+Introduis-la naturellement (1 phrase), puis pose-la. 2-3 phrases max.`,
+    },
+  ];
 }
 
 // ============================================================

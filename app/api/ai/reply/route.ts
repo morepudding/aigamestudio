@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, buildTimeContext } from "@/lib/prompts/rules";
+import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, TOPIC_DIVERSITY_RULE, PERSONAL_LIFE_RULE, buildTimeContext } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
+import { drawCards, buildDeckPromptBlock } from "@/lib/services/deckService";
 import { LLM_MODELS } from "@/lib/config/llm";
+import { increaseConfidence } from "@/lib/services/agentService";
+import { getTierForLevel } from "@/lib/config/confidenceTiers";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -19,6 +22,8 @@ export async function POST(req: NextRequest) {
     personalityNuance,
     backstory,
     memories,
+    personalMemories,
+    recentTopics,
     conversationHistory,
     userMessage,
     mood,
@@ -31,11 +36,15 @@ export async function POST(req: NextRequest) {
     personalityNuance: string;
     backstory: string;
     memories?: string;
+    personalMemories?: string;
+    recentTopics?: string;
     conversationHistory: { sender: string; content: string }[];
     userMessage: string;
     mood?: string;
     moodCause?: string;
     confidenceLevel?: number;
+    agentSlug?: string;
+    usedDeckCardIds?: string[];
   };
 
   if (!name || !personalityPrimary || !userMessage) {
@@ -46,40 +55,54 @@ export async function POST(req: NextRequest) {
     ? `\n\nTa MÉMOIRE des conversations passées avec ton boss :\n${memories}\nUtilise ces souvenirs naturellement dans tes réponses quand c'est pertinent. Ne les récite pas, intègre-les subtilement.`
     : "";
 
-  // Build studio context server-side (projects + team)
+  const personalBlock = personalMemories
+    ? `\n\nTa VIE PERSONNELLE (ce que tu sais de toi-même, co-construit en conversation) :\n${personalMemories}\nCes détails FONT PARTIE DE TOI. Réfère-t'y naturellement, enrichis-les, et reste cohérente avec ce qui a déjà été établi.`
+    : "";
+
+  const topicsBlock = recentTopics
+    ? `\n\nSujets DÉJÀ abordés récemment (ÉVITE de tourner en boucle sur les mêmes thèmes) :\n${recentTopics}`
+    : "";
+
   const studio = await buildStudioContext();
   const studioBlock = `\n\n${studio.full}`;
 
-  // Mood context
   const moodBlock = mood && mood !== "neutre"
-    ? `\n\nTon HUMEUR actuelle : ${mood}${moodCause ? ` (cause : ${moodCause})` : ""}. Cette humeur influence subtilement ton ton et tes réactions. Ne la mentionne pas explicitement, laisse-la transpirer naturellement.`
+    ? `\n\nTon HUMEUR actuelle : ${mood}${moodCause ? ` (cause : ${moodCause})` : ""}. Cette humeur influence subtilement ton ton et tes réactions. Ne la mentionne pas explicitement, laisse-la transpirer naturellement. L'humeur peut venir de ta vie perso (mal dormi, bon weekend, concert ce soir...) autant que du boulot.`
     : "";
 
-  // Confidence level → relation tone
+  // Confidence level → relation tone (updated thresholds for 300-scale)
   const cl = confidenceLevel ?? 0;
   let relationBlock = "";
-  if (cl >= 60) {
+  if (cl >= 150) {
     relationBlock = "\n\nVous êtes proches. Tu peux être personnel, vulnérable, parler de toi librement.";
     const nicknameRule = NICKNAME_RULES[personalityPrimary];
     if (nicknameRule) {
       relationBlock += `\n${nicknameRule}`;
     }
-  } else if (cl >= 30) {
+  } else if (cl >= 75) {
     relationBlock = "\n\nVous vous connaissez bien. Tu es à l'aise, détendu, naturel.";
+  } else if (cl >= 25) {
+    relationBlock = "\n\nVous commencez à vous connaître. Tu es chaleureux mais encore un peu réservé.";
   }
 
-  // Time awareness
   const timeBlock = `\n\n${buildTimeContext()}`;
 
-  // Emoji rules per personality
+  const agentSlug = body.agentSlug ?? name.toLowerCase();
+  const drawnCards = drawCards(agentSlug, 3, {
+    confidenceLevel: cl,
+    usedCardIds: body.usedDeckCardIds ?? [],
+  });
+  const deckBlock = buildDeckPromptBlock(drawnCards);
+
   const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
 
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
-Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}${studioBlock}${moodBlock}${relationBlock}${timeBlock}
+Contexte pro (secondaire) : ${backstory ?? "Tu fais partie de l'équipe."}${personalBlock}${memoryBlock}${studioBlock}${moodBlock}${relationBlock}${topicsBlock}${timeBlock}
 
 Tu es un collègue, pas un personnage de fiction. Parle comme une vraie personne sur une messagerie — naturel, décontracté, avec ta personnalité qui transparaît dans ton style, pas dans des tics forcés.
 Si le boss parle boulot, réponds normalement. Si la conversation dérive sur du perso, suis le flow.
+Tu es une personne ENTIÈRE avec des émotions, une histoire, des passions, des proches. Le boulot n'est qu'UNE facette de ta vie.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
@@ -87,9 +110,10 @@ RÈGLES :
 - Tu tutoies ton boss.
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
-${ANTI_HALLUCINATION_RULE}`;
+${TOPIC_DIVERSITY_RULE}
+${PERSONAL_LIFE_RULE}
+${ANTI_HALLUCINATION_RULE}${deckBlock ? `\n\n${deckBlock}` : ""}`;
 
-  // Build message history for context (last 10 messages max)
   const history = (conversationHistory ?? []).slice(-10).map((m) => ({
     role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
     content: m.content,
@@ -111,7 +135,7 @@ ${ANTI_HALLUCINATION_RULE}`;
       model: LLM_MODELS.chat,
       messages,
       max_tokens: 500,
-      temperature: 0.85,
+      temperature: 0.75,
     }),
   });
 
@@ -123,7 +147,6 @@ ${ANTI_HALLUCINATION_RULE}`;
   const data = await res.json();
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
-  // Filter out non-Latin characters
   message = message
     .replace(
       /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
@@ -131,5 +154,23 @@ ${ANTI_HALLUCINATION_RULE}`;
     )
     .trim();
 
-  return NextResponse.json({ message });
+  // Increment confidence (+1 per exchange) and detect tier unlock
+  let newConfidenceLevel: number | undefined;
+  let unlockedTier: string | undefined;
+  if (body.agentSlug) {
+    const prevLevel = cl;
+    const prevTierThreshold = getTierForLevel(prevLevel).threshold;
+    newConfidenceLevel = await increaseConfidence(body.agentSlug, 1);
+    const newTierThreshold = getTierForLevel(newConfidenceLevel).threshold;
+    if (newTierThreshold > prevTierThreshold) {
+      unlockedTier = getTierForLevel(newConfidenceLevel).label;
+    }
+  }
+
+  return NextResponse.json({
+    message,
+    deckCardIds: drawnCards.map((c) => c.id),
+    newConfidenceLevel,
+    unlockedTier,
+  });
 }

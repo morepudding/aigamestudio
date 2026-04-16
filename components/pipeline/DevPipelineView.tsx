@@ -14,6 +14,7 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
+  Users,
 } from "lucide-react";
 import { getTasksByWave, getPipelineProgress } from "@/lib/services/pipelineService";
 import type { Wave, PipelineTask } from "@/lib/types/task";
@@ -442,6 +443,8 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [autoAssigning, setAutoAssigning] = useState(false);
+  const [runningAll, setRunningAll] = useState(false);
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [executionStatuses, setExecutionStatuses] = useState<Map<string, ExecutionStatus>>(
@@ -576,6 +579,35 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
     await load();
   };
 
+  const handleAutoAssign = async () => {
+    setAutoAssigning(true);
+    setActionError(null);
+    try {
+      const allTasks = waves.flatMap((w) => w.tasks);
+      const unassigned = allTasks.filter(
+        (t) => !t.assignedAgentSlug && t.status !== "completed" && t.agentDepartment
+      );
+
+      await Promise.all(
+        unassigned.map((task) => {
+          const match = agents.find((a) => a.department === task.agentDepartment);
+          if (!match) return Promise.resolve();
+          return fetch(`/api/pipeline/task/${task.id}/assign`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentSlug: match.slug }),
+          });
+        })
+      );
+
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Erreur lors de l'auto-assignation");
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
+
   const handleExecute = async (task: PipelineTask) => {
     // Mark as running in local state immediately
     setExecutionStatuses((prev) => {
@@ -631,6 +663,122 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
         });
         return next;
       });
+    }
+  };
+
+  // Execute a single task and update execution status (shared helper for run-all)
+  const executeTaskSilent = async (task: PipelineTask) => {
+    setExecutionStatuses((prev) => {
+      const next = new Map(prev);
+      next.set(task.id, { taskId: task.id, status: "running" });
+      return next;
+    });
+    startPolling();
+    const endpoint =
+      task.status === "failed"
+        ? `/api/pipeline/task/${task.id}/retry`
+        : `/api/pipeline/task/${task.id}/execute`;
+    const res = await fetch(endpoint, { method: "POST" });
+    const data = await res.json();
+    setExecutionStatuses((prev) => {
+      const next = new Map(prev);
+      if (res.ok) {
+        next.set(task.id, {
+          taskId: task.id,
+          status: "success",
+          summary: data.summary,
+          filesWritten: data.filesWritten,
+          tokensUsed: data.tokensUsed,
+          durationMs: data.durationMs,
+        });
+      } else {
+        next.set(task.id, {
+          taskId: task.id,
+          status: "error",
+          errorMessage: data.error ?? "Erreur inconnue",
+        });
+      }
+      return next;
+    });
+    return res.ok;
+  };
+
+  const handleRunAll = async () => {
+    setRunningAll(true);
+    setActionError(null);
+    try {
+      // Get a fresh snapshot of all waves sorted by wave number
+      const freshWaves = await getTasksByWave(projectId, "in-dev");
+      const sortedWaves = [...freshWaves].sort((a, b) => a.number - b.number);
+
+      for (const wave of sortedWaves) {
+        if (wave.allCompleted) continue;
+
+        // Process this wave until all tasks are done or we're stuck
+        let stuck = false;
+        while (!stuck) {
+          await fetch(`/api/pipeline/${projectId}/advance`, { method: "POST" });
+          const refreshed = await getTasksByWave(projectId, "in-dev");
+          setWaves(refreshed);
+
+          const currentWave = refreshed.find((w) => w.number === wave.number);
+          if (!currentWave) break;
+
+          const allTasks = currentWave.tasks;
+
+          if (allTasks.every((t) => t.status === "completed")) break;
+
+          // Any failed task → abort
+          const failedTasks = allTasks.filter((t) => t.status === "failed");
+          if (failedTasks.length > 0) {
+            setActionError(`Wave ${wave.number} : ${failedTasks.length} tâche(s) échouée(s)`);
+            stuck = true;
+            break;
+          }
+
+          // Auto-approve review tasks first
+          const reviewTasks = allTasks.filter((t) => t.status === "review");
+          for (const task of reviewTasks) {
+            setExecutionStatuses((prev) => {
+              const next = new Map(prev);
+              next.set(task.id, { taskId: task.id, status: "running" });
+              return next;
+            });
+            await fetch(`/api/pipeline/task/${task.id}/approve`, { method: "POST" });
+            setExecutionStatuses((prev) => {
+              const next = new Map(prev);
+              next.set(task.id, { taskId: task.id, status: "success", summary: "Approuvé automatiquement" });
+              return next;
+            });
+          }
+          if (reviewTasks.length > 0) continue;
+
+          // Execute ready tasks
+          const readyTasks = allTasks.filter((t) => t.status === "ready");
+          if (readyTasks.length === 0) {
+            // Nothing ready and not all done → something is in-progress or planned, wait
+            const anyActive = allTasks.some((t) => t.status === "in-progress" || t.status === "retrying");
+            if (!anyActive) stuck = true; // deadlock
+            break;
+          }
+
+          for (const task of readyTasks) {
+            const ok = await executeTaskSilent(task);
+            if (!ok) {
+              setActionError(`Échec lors de la tâche : ${task.title}`);
+              stuck = true;
+              break;
+            }
+          }
+
+          if (stuck) break;
+        }
+
+        if (stuck) break;
+      }
+    } finally {
+      setRunningAll(false);
+      await load();
     }
   };
 
@@ -710,8 +858,32 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
             <h3 className="text-base font-bold text-white/90">Pipeline de Développement</h3>
             <div className="flex items-center gap-2">
               <button
+                onClick={handleAutoAssign}
+                disabled={autoAssigning || runningAll || generating}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition-colors px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {autoAssigning ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Users className="w-3.5 h-3.5" />
+                )}
+                {autoAssigning ? "Assignation…" : "Assigner par rôle"}
+              </button>
+              <button
+                onClick={handleRunAll}
+                disabled={runningAll || generating}
+                className="flex items-center gap-1.5 text-xs font-semibold text-violet-300 hover:text-violet-200 transition-colors px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {runningAll ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                {runningAll ? "En cours…" : "Lancer tout"}
+              </button>
+              <button
                 onClick={handleCatchUp}
-                disabled={generating}
+                disabled={generating || runningAll}
                 className="flex items-center gap-1.5 text-xs font-semibold text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"
               >
                 {generating ? (
@@ -723,7 +895,8 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
               </button>
               <button
                 onClick={load}
-                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5"
+                disabled={runningAll}
+                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 disabled:opacity-40"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Actualiser

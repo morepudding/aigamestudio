@@ -40,6 +40,7 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
 
   const load = useCallback(async () => {
@@ -94,6 +95,47 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
       await load();
     } finally {
       setExecutingId(null);
+    }
+  };
+
+  const handleRunAll = async () => {
+    setRunningAll(true);
+    try {
+      let hasMore = true;
+      while (hasMore) {
+        await fetch(`/api/pipeline/${projectId}/advance`, { method: "POST" });
+        const wavesData = await getTasksByWave(projectId, phase);
+        setWaves(wavesData);
+
+        const allTasks = wavesData.flatMap((w) => w.tasks);
+        const readyTasks = allTasks.filter((t) => t.status === "ready");
+        const reviewTasks = allTasks.filter((t) => t.status === "review");
+
+        // Auto-approve tasks waiting for review
+        if (reviewTasks.length > 0) {
+          for (const task of reviewTasks) {
+            setExecutingId(task.id);
+            await fetch(`/api/pipeline/task/${task.id}/approve`, { method: "POST" });
+            setExecutingId(null);
+          }
+          continue; // re-loop to advance and pick up newly unlocked tasks
+        }
+
+        if (readyTasks.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        for (const task of readyTasks) {
+          setExecutingId(task.id);
+          await fetch(`/api/pipeline/task/${task.id}/execute`, { method: "POST" });
+          setExecutingId(null);
+        }
+      }
+    } finally {
+      setRunningAll(false);
+      setExecutingId(null);
+      await load();
     }
   };
 
@@ -165,13 +207,30 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white/90">{phaseLabel[phase]}</h3>
-          <button
-            onClick={load}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Actualiser
-          </button>
+          <div className="flex items-center gap-2">
+            {!conceptLocked && (
+              <button
+                onClick={handleRunAll}
+                disabled={runningAll || !!executingId}
+                className="flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 transition-colors px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {runningAll ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                {runningAll ? "En cours…" : "Lancer tout"}
+              </button>
+            )}
+            <button
+              onClick={load}
+              disabled={runningAll}
+              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Actualiser
+            </button>
+          </div>
         </div>
 
         {/* Progress bar */}
@@ -194,8 +253,8 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
                 executingId={executingId}
                 executionLocked={conceptLocked}
                 onReview={setReviewTask}
-                onExecute={executingId || conceptLocked ? undefined : handleExecute}
-                onRetry={executingId || conceptLocked ? undefined : handleRetry}
+                onExecute={executingId || conceptLocked || runningAll ? undefined : handleExecute}
+                onRetry={executingId || conceptLocked || runningAll ? undefined : handleRetry}
               />
             </div>
           ))}

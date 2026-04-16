@@ -73,6 +73,7 @@ function PersonalityRoulette({
 }) {
   const primary = personalities.find((p) => p.id === mix.primary)!;
   const nuance = personalities.find((p) => p.id === mix.nuance)!;
+  const extras = mix.extras.map((id) => personalities.find((p) => p.id === id)!);
 
   return (
     <div className="space-y-6">
@@ -107,6 +108,21 @@ function PersonalityRoulette({
             {nuance.description}
           </div>
         </div>
+      </div>
+      {/* Extras */}
+      <div className="grid grid-cols-2 gap-3">
+        {extras.map((trait) => (
+          <div
+            key={trait.id}
+            className={`bg-white/3 border border-white/10 rounded-xl p-4 text-center transition-all ${
+              spinning ? "animate-pulse scale-95" : "scale-100"
+            }`}
+          >
+            <div className="text-2xl mb-1">{trait.emoji}</div>
+            <div className="text-sm font-semibold text-white/80">{trait.label}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{trait.description}</div>
+          </div>
+        ))}
       </div>
       <button
         onClick={onReroll}
@@ -176,6 +192,8 @@ export default function RecruterPage() {
     () => rollPersonality()
   );
   const [spinning, setSpinning] = useState(false);
+  const [personalityBio, setPersonalityBio] = useState("");
+  const [bioLoading, setBioLoading] = useState(false);
   const [appearanceFemme, setAppearanceFemme] = useState<AppearanceFemme>({
     cheveux: "",
     yeux: "",
@@ -230,17 +248,45 @@ export default function RecruterPage() {
     }
   }, []);
 
+  const fetchPersonalityBio = useCallback(async (mix: PersonalityMix, dept: string) => {
+    const { personalities } = await import("@/lib/wizard-data");
+    const traits = [
+      { trait: mix.primary, label: personalities.find((p) => p.id === mix.primary)?.label ?? mix.primary, emoji: personalities.find((p) => p.id === mix.primary)?.emoji ?? "✦", role: "primary" as const },
+      { trait: mix.nuance, label: personalities.find((p) => p.id === mix.nuance)?.label ?? mix.nuance, emoji: personalities.find((p) => p.id === mix.nuance)?.emoji ?? "✦", role: "nuance" as const },
+      ...mix.extras.map((id) => ({ trait: id, label: personalities.find((p) => p.id === id)?.label ?? id, emoji: personalities.find((p) => p.id === id)?.emoji ?? "✦", role: "secondary" as const })),
+    ];
+    setBioLoading(true);
+    setPersonalityBio("");
+    try {
+      const res = await fetch("/api/ai/personality-phrases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ department: dept, traits }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPersonalityBio(data.bio ?? "");
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setBioLoading(false);
+    }
+  }, []);
+
   // ── Roll personality ─────────────────────────────────────
   function rollPersonality(): PersonalityMix {
     const shuffled = [...personalities].sort(() => Math.random() - 0.5);
-    return { primary: shuffled[0].id, nuance: shuffled[1].id };
+    return { primary: shuffled[0].id, nuance: shuffled[1].id, extras: [shuffled[2].id, shuffled[3].id] };
   }
 
   const handleReroll = () => {
     setSpinning(true);
     setTimeout(() => {
-      setPersonalityMix(rollPersonality());
+      const newMix = rollPersonality();
+      setPersonalityMix(newMix);
       setSpinning(false);
+      if (department) fetchPersonalityBio(newMix, department);
     }, 600);
   };
 
@@ -361,6 +407,11 @@ export default function RecruterPage() {
       if (nextStep === 4) {
         generateName();
       }
+
+      // Fetch personality bio when landing on personality step
+      if (nextStep === 2 && department) {
+        fetchPersonalityBio(personalityMix, department);
+      }
     }
   };
 
@@ -460,6 +511,30 @@ export default function RecruterPage() {
               onReroll={handleReroll}
               spinning={spinning}
             />
+            {/* AI personality bio */}
+            {(bioLoading || personalityBio) && (
+              <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-3">
+                <p className="text-[10px] uppercase tracking-widest text-violet-400/70 font-semibold">
+                  ✦ Portrait psychologique
+                </p>
+                {bioLoading ? (
+                  <div className="space-y-2 animate-pulse">
+                    <div className="h-2.5 bg-white/10 rounded w-full" />
+                    <div className="h-2.5 bg-white/10 rounded w-5/6" />
+                    <div className="h-2.5 bg-white/10 rounded w-full" />
+                    <div className="h-2.5 bg-white/10 rounded w-4/5" />
+                    <div className="h-2.5 bg-white/10 rounded w-full" />
+                    <div className="h-2.5 bg-white/10 rounded w-3/4" />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {personalityBio.split(/\n+/).filter(Boolean).map((para, i) => (
+                      <p key={i} className="text-sm text-muted-foreground leading-relaxed italic">{para}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
 
@@ -867,6 +942,12 @@ export default function RecruterPage() {
                     <span className="px-2 py-1 rounded-full bg-white/5 text-white/60 text-xs font-medium">
                       + {personalities.find((p) => p.id === personalityMix.nuance)?.label}
                     </span>
+                    {personalityMix.extras.map((id) => (
+                      <span key={id} className="px-2 py-1 rounded-full bg-white/5 text-white/50 text-xs font-medium">
+                        {personalities.find((p) => p.id === id)?.emoji}{" "}
+                        {personalities.find((p) => p.id === id)?.label}
+                      </span>
+                    ))}
                     <span className="px-2 py-1 rounded-full bg-white/5 text-white/60 text-xs font-medium">
                       {gender === "femme" ? "♀️" : "♂️"} {gender}
                     </span>
