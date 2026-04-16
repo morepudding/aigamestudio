@@ -4,6 +4,8 @@ import { getAgentBySlug } from "@/lib/services/agentService";
 import { supabase } from "@/lib/supabase/client";
 import { getExclusiveTierByThreshold } from "@/lib/config/exclusivePhotos";
 
+export const maxDuration = 120; // Civitai image generation can take 30-90s
+
 const DEFAULT_CIVITAI_MODEL_URN = "urn:air:sd1:checkpoint:civitai:4201@130072";
 const DEFAULT_NEGATIVE_PROMPT =
   "low quality, blurry, deformed face, deformed body, extra fingers, bad anatomy, cartoon, anime, cgi, explicit nudity, fetish, watermark, text";
@@ -155,11 +157,13 @@ export async function POST(req: NextRequest) {
     imagePayload = await generateImageWithCivitai(apiToken, prompt, referenceImageUrl);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Image generation failed";
+    console.error("[generate-exclusive-photo] First attempt failed:", message, err);
 
     try {
       imagePayload = await generateImageWithCivitai(apiToken, fallbackSafePrompt, referenceImageUrl);
     } catch (retryErr) {
       const retryMessage = retryErr instanceof Error ? retryErr.message : "Image generation failed";
+      console.error("[generate-exclusive-photo] Retry also failed:", retryMessage, retryErr);
       return NextResponse.json(
         {
           error: "La generation Civitai a echoue. Reessaie dans quelques secondes.",
