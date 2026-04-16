@@ -1,0 +1,12 @@
+{
+	"version": 1,
+	"hooks": {
+		"preToolUse": [
+			{
+				"type": "command",
+				"bash": "bash .github/hooks/rtk-rewrite.sh",
+				"timeoutSec": 10
+			}
+		]
+	}
+}

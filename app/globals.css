@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -48,73 +49,40 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Eden Studio — dark mode forcé, teinte violet/indigo (Discord × Tinder) */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.09 0.018 280);
+  --foreground: oklch(0.93 0.01 280);
+  --card: oklch(0.13 0.018 280);
+  --card-foreground: oklch(0.93 0.01 280);
+  --popover: oklch(0.13 0.018 280);
+  --popover-foreground: oklch(0.93 0.01 280);
+  --primary: oklch(0.6 0.24 265);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.18 0.02 280);
+  --secondary-foreground: oklch(0.85 0.01 280);
+  --muted: oklch(0.16 0.015 280);
+  --muted-foreground: oklch(0.55 0.02 280);
+  --accent: oklch(0.22 0.03 280);
+  --accent-foreground: oklch(0.93 0.01 280);
+  --destructive: oklch(0.65 0.22 25);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.6 0.24 265);
+  --radius: 0.875rem;
+  --chart-1: oklch(0.6 0.24 265);
+  --chart-2: oklch(0.65 0.2 220);
+  --chart-3: oklch(0.55 0.22 300);
+  --chart-4: oklch(0.7 0.18 180);
+  --chart-5: oklch(0.68 0.2 340);
+  --sidebar: oklch(0.11 0.018 280);
+  --sidebar-foreground: oklch(0.93 0.01 280);
+  --sidebar-primary: oklch(0.6 0.24 265);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.18 0.02 280);
+  --sidebar-accent-foreground: oklch(0.93 0.01 280);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --sidebar-ring: oklch(0.6 0.24 265);
 }
 
 @layer base {
@@ -126,5 +94,131 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOOD RING ANIMATIONS — Dating Sim Vibes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes spin-gradient {
+  from { --angle: 0deg; }
+  to { --angle: 360deg; }
+}
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.85; }
+}
+
+@keyframes pulse-nervous {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.02); }
+  50% { transform: scale(0.98); }
+  75% { transform: scale(1.03); }
+}
+
+@keyframes pulse-sparkle {
+  0%, 100% { filter: brightness(1); transform: scale(1); }
+  50% { filter: brightness(1.3); transform: scale(1.02); }
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Utility animation classes */
+.animate-pulse-slow { animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-pulse-medium { animation: pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-pulse-fast { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.animate-pulse-erratic { animation: pulse-nervous 1.2s ease-in-out infinite; }
+.animate-pulse-proud { animation: pulse-ring 2s ease-in-out infinite; }
+.animate-pulse-playful { animation: pulse-ring 1.8s ease-in-out infinite, float-gentle 2s ease-in-out infinite; }
+.animate-pulse-sparkle { animation: pulse-sparkle 2s ease-in-out infinite; }
+.animate-pulse-nervous { animation: pulse-nervous 1.5s ease-in-out infinite; }
+
+/* Gradient angle CSS property for animated gradients */
+@property --angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CONFIDENCE GAUGE — Visual Novel Style
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes heart-beat {
+  0%, 100% { transform: scale(1); }
+  15% { transform: scale(1.15); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.1); }
+  60% { transform: scale(1); }
+}
+
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+.animate-heartbeat {
+  animation: heart-beat 1.5s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TYPING INDICATOR — Personality-driven
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes typing-hesitant {
+  0%, 100% { opacity: 0.3; }
+  25% { opacity: 1; }
+  50% { opacity: 0.5; }
+  75% { opacity: 0.8; }
+}
+
+@keyframes typing-confident {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes typing-excited {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+.typing-hesitant .typing-dot { animation: typing-hesitant 1.8s ease-in-out infinite; }
+.typing-confident .typing-dot { animation: typing-confident 0.8s ease-in-out infinite; }
+.typing-excited .typing-dot { animation: typing-excited 0.5s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE — Safe areas & touch targets
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Safe area padding for bottom nav (iPhone notch/home indicator) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Prevent text size adjustment on orientation change */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Smooth scrolling for iOS */
+.scrollbar-none {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Disable tap highlight on mobile */
+@media (max-width: 767px) {
+  a, button {
+    -webkit-tap-highlight-color: transparent;
   }
 }

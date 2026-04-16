@@ -1,0 +1,231 @@
+import { getProjectById } from "@/lib/services/projectService";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  AlertTriangle,
+  Users,
+  Code,
+  PenTool,
+  Wand2,
+  MessageCircle,
+  Settings,
+} from "lucide-react";
+import PipelineView from "@/components/pipeline/PipelineView";
+
+const statusLabels: Record<string, string> = {
+  concept: "Concept",
+  "in-dev": "En développement",
+  released: "Sorti",
+};
+
+const statusDot: Record<string, string> = {
+  concept: "bg-blue-400",
+  "in-dev": "bg-violet-400 animate-pulse",
+  released: "bg-emerald-400",
+};
+
+const getRoleIcon = (name: string) => {
+  if (name.toLowerCase() === "romain") return <PenTool className="w-4 h-4" />;
+  if (name.toLowerCase() === "léa" || name.toLowerCase() === "sofia")
+    return <Wand2 className="w-4 h-4" />;
+  if (name.toLowerCase() === "karim") return <Code className="w-4 h-4" />;
+  return <Users className="w-4 h-4" />;
+};
+
+const getRoleName = (name: string) => {
+  if (name.toLowerCase() === "romain") return "Game Designer / Writer";
+  if (name.toLowerCase() === "léa" || name.toLowerCase() === "sofia")
+    return "Lead Artist";
+  if (name.toLowerCase() === "karim") return "Lead Dev";
+  return "Collaborateur";
+};
+
+export default async function ProjectPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const project = await getProjectById(id);
+
+  if (!project) return notFound();
+
+  return (
+    <div className="flex flex-col min-h-screen bg-background text-foreground pb-24">
+      {/* ── Header / Hero ── */}
+      <section className="relative">
+        <div
+          className={`absolute inset-0 h-80 bg-linear-to-b ${project.coverGradient} opacity-20 -z-10`}
+        />
+        <div className="absolute inset-0 h-80 bg-linear-to-b from-transparent to-background -z-10" />
+
+        <div className="max-w-6xl mx-auto px-6 pt-8 pb-12">
+          {/* Nav */}
+          <Link
+            href="/projects"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-10"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Retour aux projets
+          </Link>
+
+          {/* Project Title & Status */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <span className="px-3 py-1 text-xs font-semibold rounded-md bg-white/10 text-white backdrop-blur-md">
+                  {project.genre}
+                </span>
+                <span className="px-3 py-1 text-xs font-semibold rounded-md border border-white/10 text-muted-foreground">
+                  {project.engine}
+                </span>
+                <span className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md border border-white/10 text-white/70">
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusDot[project.status]}`} />
+                  {statusLabels[project.status]}
+                </span>
+              </div>
+              <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-4">
+                {project.title}
+              </h1>
+              <p className="max-w-2xl text-lg text-muted-foreground leading-relaxed">
+                {project.description}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <Link
+                href={`/projects/${project.id}/decisions`}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-sm font-medium text-indigo-300 transition-colors"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Décisions
+              </Link>
+              {project.githubRepoUrl && (
+                <a
+                  href={project.githubRepoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-medium transition-colors"
+                >
+                  <Code className="w-4 h-4" />
+                  GitHub
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Main Content ── */}
+      <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
+        {/* Left column (Pipeline) */}
+        <div className="lg:col-span-2 space-y-8">
+          {project.status === "concept" && !project.decisionsReady && (
+            <section className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-200">Cadrage requis avant la rédaction</p>
+                  <p className="mt-1 text-amber-100/80">
+                    Les 5 documents de conception dépendent du cadrage avec Eve. Tant qu&apos;il n&apos;est pas validé,
+                    la génération du pipeline documentaire reste bloquée.
+                  </p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          <PipelineView projectId={project.id} phase={project.status} decisionsReady={project.decisionsReady} />
+
+          <section className="bg-white/2 border border-white/8 backdrop-blur-md rounded-2xl p-6">
+            <h3 className="text-sm font-bold text-white/60 mb-4">Informations Techniques</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div>
+                <span className="block text-xs text-muted-foreground mb-1">Plateformes</span>
+                <span className="text-sm font-medium">{project.platforms.join(", ")}</span>
+              </div>
+              <div>
+                <span className="block text-xs text-muted-foreground mb-1">Moteur</span>
+                <span className="text-sm font-medium">{project.engine}</span>
+              </div>
+              <div>
+                <span className="block text-xs text-muted-foreground mb-1">Statut</span>
+                <span className="text-sm font-medium text-primary">{statusLabels[project.status]}</span>
+              </div>
+              {project.githubRepoUrl && (
+                <div>
+                  <span className="block text-xs text-muted-foreground mb-1">GitHub</span>
+                  <a
+                    href={project.githubRepoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-blue-400 hover:underline truncate block"
+                  >
+                    {project.githubRepoName ?? "Repo"}
+                  </a>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* Right column (Team) */}
+        <div className="space-y-6">
+          <div className="bg-white/2 border border-white/8 backdrop-blur-md rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold">Équipe ({project.team.length})</h3>
+              <button className="text-xs font-medium text-primary hover:underline">
+                Gérer
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {project.team.map((member) => (
+                <div
+                  key={member}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  <div className="w-10 h-10 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0">
+                    {member.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-foreground truncate">
+                      {member}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {getRoleName(member)}
+                    </p>
+                  </div>
+                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-muted-foreground shrink-0">
+                    {getRoleIcon(member)}
+                  </div>
+                </div>
+              ))}
+
+              {/* Dev Agent placeholder if small team */}
+              {project.team.length < 3 && (
+                <div className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-white/20 opacity-70 hover:opacity-100 hover:bg-white/5 transition-all cursor-pointer group">
+                   <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors shrink-0">
+                     <Settings className="w-4 h-4" />
+                   </div>
+                   <div className="flex-1">
+                     <p className="font-medium text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                        Agent Développeur
+                     </p>
+                     <p className="text-xs text-muted-foreground/50">
+                        IA Autonome
+                     </p>
+                   </div>
+                   <div className="w-8 h-8 rounded-lg border border-white/10 flex items-center justify-center text-xs font-medium bg-primary/10 text-primary">
+                     +
+                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
