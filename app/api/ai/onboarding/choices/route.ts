@@ -18,15 +18,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { step, agentName, role, department, personalityPrimary, personalityNuance, gender, backstory } = body as {
+  const { step, agentName, role } = body as {
     step: number;
     agentName: string;
     role: string;
-    department: string;
-    personalityPrimary: string;
-    personalityNuance: string;
-    gender: string;
-    backstory: string;
   };
 
   if (!step || step < 1 || step > 5 || !agentName) {
@@ -34,23 +29,18 @@ export async function POST(req: NextRequest) {
   }
 
   const theme = STEP_THEMES[step - 1];
-  const genderAdj = gender === "femme" ? "e" : "";
 
-  const prompt = `On fait connaissance avec ${agentName}, ${role} (${department}).
+  const prompt = `Contexte : un afterwork dans un studio de jeu. ${agentName} (${role}) vient d'arriver. Eve anime la soirée et pose cette question au boss (le joueur) :
 
-Personnalité : ${personalityPrimary} avec nuance ${personalityNuance}.
-Genre: ${gender}. Background: ${backstory}
+"${theme.question}"
 
-Question posée : "${theme.question}"
-
-Génère 3 réponses possibles pour définir ce trait. Variées : une drôle, une touchante, une surprenante.
+Génère 3 réponses courtes que le boss pourrait donner — à la première personne, comme s'il parlait de lui-même. Les 3 réponses doivent avoir des tonalités différentes : une drôle ou décalée, une sincère ou touchante, une surprenante ou inattendue.
 
 RÈGLES :
 - 1 phrase courte par choix, max 15 mots
-- Ton familier et naturel
-- Cohérent avec la personnalité ${personalityPrimary}
-- ${agentName} est ${genderAdj === "e" ? "une femme" : "un homme"}
-- Français uniquement
+- Ton familier et naturel, en français
+- À la première personne (le boss parle de lui)
+- Pas de mention du nom du boss
 
 Réponds en JSON array de 3 strings.`;
 
@@ -66,7 +56,7 @@ Réponds en JSON array de 3 strings.`;
         messages: [
           {
             role: "system",
-            content: "Tu génères des choix de dialogue courts et naturels en français. Réponds UNIQUEMENT en JSON valide.",
+            content: "Tu génères des réponses de dialogue courtes et naturelles en français, à la première personne. Réponds UNIQUEMENT en JSON valide.",
           },
           { role: "user", content: prompt },
         ],
