@@ -6,30 +6,24 @@ import {
   Check,
   Copy,
   Loader2,
-  Plus,
   RotateCcw,
   Save,
-  Star,
   Trash2,
-  Wand2,
   ZoomIn,
   ZoomOut,
   Monitor,
   Leaf,
-  ChevronDown,
-  ChevronUp,
   Armchair,
   Archive,
   Coffee,
   Droplets,
-  Layers,
-  Package,
   Sparkles,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   generateAndLoadAssetWithUrl,
-  fetchAssetVariants,
   fetchOrGenerateVariant,
   loadImage,
   type OfficeAssetType,
@@ -56,16 +50,16 @@ const ASSET_LABELS: Record<OfficeAssetType, string> = {
   coffee_machine: "Machine a cafe",
 };
 
-const ASSET_PLACEMENT: Record<PlaceableOfficeAssetType, { idPrefix: string; baseSize: number; errorMessage: string }> = {
-  desk_workstation: { idPrefix: "desk", baseSize: 300, errorMessage: "Impossible de generer le bureau." },
-  chair_office: { idPrefix: "chair", baseSize: 170, errorMessage: "Impossible de generer la chaise." },
-  plant_green_1: { idPrefix: "plant-1", baseSize: 170, errorMessage: "Impossible de generer la plante verte I." },
-  plant_green_2: { idPrefix: "plant-2", baseSize: 170, errorMessage: "Impossible de generer la plante verte II." },
-  plant_green_3: { idPrefix: "plant-3", baseSize: 170, errorMessage: "Impossible de generer la plante verte III." },
-  cabinet_storage: { idPrefix: "cabinet", baseSize: 230, errorMessage: "Impossible de generer l'armoire." },
-  trash_can: { idPrefix: "trash", baseSize: 130, errorMessage: "Impossible de generer la poubelle." },
-  water_fountain: { idPrefix: "water", baseSize: 210, errorMessage: "Impossible de generer la fontaine a eau." },
-  coffee_machine: { idPrefix: "coffee", baseSize: 170, errorMessage: "Impossible de generer la machine a cafe." },
+const ASSET_PLACEMENT: Record<PlaceableOfficeAssetType, { idPrefix: string; baseSize: number }> = {
+  desk_workstation: { idPrefix: "desk", baseSize: 300 },
+  chair_office: { idPrefix: "chair", baseSize: 170 },
+  plant_green_1: { idPrefix: "plant-1", baseSize: 170 },
+  plant_green_2: { idPrefix: "plant-2", baseSize: 170 },
+  plant_green_3: { idPrefix: "plant-3", baseSize: 170 },
+  cabinet_storage: { idPrefix: "cabinet", baseSize: 230 },
+  trash_can: { idPrefix: "trash", baseSize: 130 },
+  water_fountain: { idPrefix: "water", baseSize: 210 },
+  coffee_machine: { idPrefix: "coffee", baseSize: 170 },
 };
 
 type OfficeAssetInstance = {
@@ -77,13 +71,11 @@ type OfficeAssetInstance = {
   y: number;
   width: number;
   height: number;
+  variant: AssetVariant;
 };
 
 type StudioLayoutPayload = {
-  canvas: {
-    width: number;
-    height: number;
-  };
+  canvas: { width: number; height: number };
   studioAssetUrl: string;
   assets: Array<{
     type: OfficeAssetType;
@@ -92,10 +84,10 @@ type StudioLayoutPayload = {
     y: number;
     width: number;
     height: number;
+    variant?: AssetVariant;
   }>;
 };
 
-// variants: per-asset map of variant → URL (already generated and stored)
 type AssetVariantsMap = Partial<Record<OfficeAssetType, Partial<Record<AssetVariant, string>>>>;
 
 type StudioConfigResponse = {
@@ -104,316 +96,262 @@ type StudioConfigResponse = {
   layout?: StudioLayoutPayload | null;
 };
 
-type AssetCatalogItem = {
-  type: PlaceableOfficeAssetType;
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-};
+// ─── Catalogue data ───────────────────────────────────────────────────────────
 
-type AssetCategory = {
+type CatalogCategory = {
   id: string;
   label: string;
   icon: React.ReactNode;
-  color: string;
-  borderColor: string;
-  items: AssetCatalogItem[];
+  items: PlaceableOfficeAssetType[];
 };
 
-const ASSET_CATEGORIES: AssetCategory[] = [
+const CATALOG_CATEGORIES: CatalogCategory[] = [
   {
     id: "mobilier",
     label: "Mobilier",
-    icon: <Armchair className="w-4 h-4" />,
-    color: "from-indigo-500/20 to-indigo-600/10",
-    borderColor: "border-indigo-500/30",
-    items: [
-      {
-        type: "desk_workstation",
-        label: "Bureau PC",
-        icon: <Monitor className="w-5 h-5" />,
-        color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-      },
-      {
-        type: "chair_office",
-        label: "Chaise",
-        icon: <Armchair className="w-5 h-5" />,
-        color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-      },
-      {
-        type: "cabinet_storage",
-        label: "Armoire",
-        icon: <Archive className="w-5 h-5" />,
-        color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
-      },
-    ],
+    icon: <Armchair className="w-3.5 h-3.5" />,
+    items: ["desk_workstation", "chair_office", "cabinet_storage"],
   },
   {
     id: "deco",
-    label: "Deco",
-    icon: <Leaf className="w-4 h-4" />,
-    color: "from-emerald-500/20 to-emerald-600/10",
-    borderColor: "border-emerald-500/30",
-    items: [
-      {
-        type: "plant_green_1",
-        label: "Plante verte I",
-        icon: <Leaf className="w-5 h-5" />,
-        color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-      },
-      {
-        type: "plant_green_2",
-        label: "Plante verte II",
-        icon: <Leaf className="w-5 h-5" />,
-        color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-      },
-      {
-        type: "plant_green_3",
-        label: "Plante verte III",
-        icon: <Leaf className="w-5 h-5" />,
-        color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-      },
-    ],
+    label: "Déco",
+    icon: <Leaf className="w-3.5 h-3.5" />,
+    items: ["plant_green_1", "plant_green_2", "plant_green_3"],
   },
   {
     id: "equipements",
-    label: "Equipements",
-    icon: <Coffee className="w-4 h-4" />,
-    color: "from-amber-500/20 to-amber-600/10",
-    borderColor: "border-amber-500/30",
-    items: [
-      {
-        type: "trash_can",
-        label: "Poubelle",
-        icon: <Trash2 className="w-5 h-5" />,
-        color: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-      },
-      {
-        type: "water_fountain",
-        label: "Fontaine a eau",
-        icon: <Droplets className="w-5 h-5" />,
-        color: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-      },
-      {
-        type: "coffee_machine",
-        label: "Machine a cafe",
-        icon: <Coffee className="w-5 h-5" />,
-        color: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-      },
-    ],
+    label: "Équipements",
+    icon: <Coffee className="w-3.5 h-3.5" />,
+    items: ["trash_can", "water_fountain", "coffee_machine"],
   },
 ];
 
-// One variant slot (NO / NE / SE / SO)
-function VariantSlot({
-  variant,
-  url,
-  isLoading,
-  onPlace,
-  onGenerate,
-}: {
-  variant: AssetVariant;
-  url?: string;
-  isLoading: boolean;
-  onPlace: () => void;
-  onGenerate: () => void;
-}) {
-  const label = VARIANT_LABELS[variant];
-  return (
-    <div className="relative group rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-      <div className="aspect-square w-full relative">
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={label} className="w-full h-full object-contain p-0.5" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-white/15">
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-            ) : (
-              <span className="text-[10px] text-white/20 font-bold">{label}</span>
-            )}
-          </div>
-        )}
-        {/* Overlay actions */}
-        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-1">
-          {url ? (
-            <button
-              onClick={onPlace}
-              className="w-full py-0.5 rounded bg-indigo-500 text-white text-[10px] font-bold hover:bg-indigo-400 flex items-center justify-center gap-0.5"
-            >
-              <Plus className="w-2.5 h-2.5" /> Placer
-            </button>
-          ) : null}
-          <button
-            onClick={onGenerate}
-            disabled={isLoading}
-            className="w-full py-0.5 rounded bg-white/10 text-white/70 text-[10px] hover:bg-white/20 flex items-center justify-center gap-0.5 disabled:opacity-40"
-          >
-            <Wand2 className="w-2.5 h-2.5" /> {url ? "Regen" : "Générer"}
-          </button>
-        </div>
-      </div>
-      {/* Label */}
-      <div className="text-center py-0.5">
-        <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider">{label}</span>
-      </div>
-    </div>
-  );
-}
+const ITEM_ICONS: Record<PlaceableOfficeAssetType, React.ReactNode> = {
+  desk_workstation: <Monitor className="w-6 h-6" />,
+  chair_office: <Armchair className="w-6 h-6" />,
+  cabinet_storage: <Archive className="w-6 h-6" />,
+  plant_green_1: <Leaf className="w-6 h-6" />,
+  plant_green_2: <Leaf className="w-6 h-6" />,
+  plant_green_3: <Leaf className="w-6 h-6" />,
+  trash_can: <Trash2 className="w-6 h-6" />,
+  water_fountain: <Droplets className="w-6 h-6" />,
+  coffee_machine: <Coffee className="w-6 h-6" />,
+};
 
-// Asset card with 4 variant slots
-function AssetCard({
-  item,
+// ─── CatalogItem — one tile in the grid ──────────────────────────────────────
+function CatalogItem({
+  type,
   variants,
-  loadingVariant,
-  onGenerate,
-  onPlace,
+  isGenerating,
+  onClick,
 }: {
-  item: AssetCatalogItem;
+  type: PlaceableOfficeAssetType;
   variants: Partial<Record<AssetVariant, string>>;
-  loadingVariant: string | null;
-  onGenerate: (variant: AssetVariant, force?: boolean) => void;
-  onPlace: (variant: AssetVariant) => void;
+  isGenerating: boolean;
+  onClick: () => void;
 }) {
+  // Show first available variant as preview
+  const previewUrl = variants[1] ?? variants[2] ?? variants[3] ?? variants[4];
+  const hasAny = !!previewUrl;
+
   return (
-    <div className={`rounded-xl border ${item.color} overflow-hidden`}>
-      {/* Header */}
-      <div className="px-2 py-1.5 flex items-center gap-1.5">
-        <span className="opacity-60">{item.icon}</span>
-        <span className="text-xs font-semibold text-white/80 truncate">{item.label}</span>
+    <button
+      onClick={onClick}
+      disabled={isGenerating}
+      title={ASSET_LABELS[type]}
+      className="group relative aspect-square rounded-xl border border-white/10 bg-white/3 hover:bg-white/8 hover:border-indigo-400/40 transition-all overflow-hidden disabled:opacity-60"
+    >
+      {isGenerating ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+        </div>
+      ) : hasAny ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={previewUrl}
+          alt={ASSET_LABELS[type]}
+          className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform"
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-white/20 group-hover:text-white/40 transition-colors">
+          {ITEM_ICONS[type]}
+        </div>
+      )}
+      {/* Hover overlay */}
+      <div className="absolute inset-x-0 bottom-0 py-1 bg-black/60 text-[9px] text-white/70 text-center font-medium opacity-0 group-hover:opacity-100 transition-opacity truncate px-1">
+        {ASSET_LABELS[type]}
       </div>
-      {/* 2×2 variant grid */}
-      <div className="px-2 pb-2 grid grid-cols-2 gap-1">
-        {([1, 2, 3, 4] as AssetVariant[]).map((v) => (
-          <VariantSlot
-            key={v}
-            variant={v}
-            url={variants[v]}
-            isLoading={loadingVariant === `${item.type}_v${v}`}
-            onPlace={() => onPlace(v)}
-            onGenerate={() => onGenerate(v)}
-          />
-        ))}
-      </div>
-    </div>
+    </button>
   );
 }
 
+// ─── SelectedAssetPanel — shown below canvas when asset is selected ───────────
 function SelectedAssetPanel({
   asset,
+  variants,
+  isChangingAngle,
   onSize,
+  onAngle,
   onDuplicate,
   onDelete,
-  onSaveDefault,
   onClose,
 }: {
   asset: OfficeAssetInstance;
+  variants: Partial<Record<AssetVariant, string>>;
+  isChangingAngle: boolean;
   onSize: (mult: number) => void;
+  onAngle: (variant: AssetVariant, needsGeneration: boolean, force?: boolean) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onSaveDefault: () => void;
   onClose: () => void;
 }) {
+  const [confirmVariant, setConfirmVariant] = useState<{ variant: AssetVariant; regen: boolean } | null>(null);
+
   return (
-    <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/40 backdrop-blur-sm overflow-hidden">
-      <div className="px-3 py-2 bg-indigo-500/10 border-b border-indigo-500/20 flex items-center justify-between">
+    <div className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden">
+      <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-          <span className="text-xs font-bold text-indigo-200 uppercase tracking-wider">Asset sélectionné</span>
+          <span className="text-xs font-semibold text-white/70">{ASSET_LABELS[asset.type]}</span>
+          <span className="text-[10px] text-white/30">{asset.width} × {asset.height}px</span>
         </div>
         <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      <div className="p-3 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
-            <Monitor className="w-4 h-4 text-indigo-300" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-white">{ASSET_LABELS[asset.type] ?? asset.type}</p>
-            <p className="text-xs text-white/40">{asset.width} × {asset.height} px</p>
+      {/* Confirm generation / regen */}
+      {confirmVariant !== null && (
+        <div className="px-3 py-2 border-b border-amber-500/20 bg-amber-500/5 flex items-center justify-between gap-3">
+          <span className="text-[11px] text-amber-300/80">
+            {confirmVariant.regen
+              ? `Régénérer l'angle ${VARIANT_LABELS[confirmVariant.variant]} ?`
+              : `Générer l'angle ${VARIANT_LABELS[confirmVariant.variant]} ?`
+            }
+            <span className="ml-1 text-amber-400/50">(1 génération IA)</span>
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => { onAngle(confirmVariant.variant, true, confirmVariant.regen); setConfirmVariant(null); }}
+              className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/30 text-amber-200 text-[11px] font-semibold hover:bg-amber-500/30 transition-all"
+            >
+              {confirmVariant.regen ? "Régénérer" : "Générer"}
+            </button>
+            <button
+              onClick={() => setConfirmVariant(null)}
+              className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-white/40 text-[11px] hover:text-white/70 transition-all"
+            >
+              Annuler
+            </button>
           </div>
         </div>
+      )}
 
-        <div className="grid grid-cols-2 gap-1.5">
+      <div className="px-3 py-2 flex items-center gap-3">
+        {/* Size */}
+        <div className="flex items-center gap-1">
           <button
             onClick={() => onSize(0.85)}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white/70 hover:bg-white/10 hover:text-white transition-all"
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Réduire"
           >
-            <ZoomOut className="w-3.5 h-3.5" /> Réduire
+            <ZoomOut className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => onSize(1.15)}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white/70 hover:bg-white/10 hover:text-white transition-all"
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Agrandir"
           >
-            <ZoomIn className="w-3.5 h-3.5" /> Agrandir
-          </button>
-          <button
-            onClick={onDuplicate}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-white/70 hover:bg-white/10 hover:text-white transition-all"
-          >
-            <Copy className="w-3.5 h-3.5" /> Dupliquer
-          </button>
-          <button
-            onClick={onDelete}
-            className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-300 hover:bg-red-500/20 hover:text-red-200 transition-all"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Supprimer
+            <ZoomIn className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <button
-          onClick={onSaveDefault}
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-200 transition-all"
-        >
-          <Star className="w-3.5 h-3.5" /> Valider comme défaut
-        </button>
+        {/* Angle selector — all 4 angles, dimmed if not generated */}
+        <div className="flex items-center gap-1 border-l border-white/8 pl-3">
+          {isChangingAngle ? (
+            <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+          ) : (
+            ([1, 2, 3, 4] as AssetVariant[]).map((v) => {
+              const hasVariant = !!variants[v];
+              const isActive = asset.variant === v;
+              return (
+                <button
+                  key={v}
+                  onClick={() => {
+                    if (hasVariant && !isActive) { onAngle(v, false); }
+                    else if (!hasVariant) { setConfirmVariant({ variant: v, regen: false }); }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (hasVariant) setConfirmVariant({ variant: v, regen: true });
+                  }}
+                  title={hasVariant ? `Vue ${VARIANT_LABELS[v]} — clic droit pour régénérer` : `Générer vue ${VARIANT_LABELS[v]}`}
+                  className={[
+                    "px-1.5 py-0.5 rounded text-[10px] font-bold transition-all",
+                    isActive
+                      ? "bg-indigo-500/40 text-indigo-100 border border-indigo-400/50"
+                      : hasVariant
+                      ? "bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80"
+                      : "border border-dashed border-white/15 text-white/20 hover:border-amber-400/40 hover:text-amber-300/60",
+                  ].join(" ")}
+                >
+                  {VARIANT_LABELS[v]}
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1 border-l border-white/8 pl-3 ml-auto">
+          <button
+            onClick={onDuplicate}
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Dupliquer"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400/70 hover:text-red-300 hover:bg-red-500/20 transition-all"
+            title="Supprimer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
+// ─── Main component ───────────────────────────────────────────────────────────
 export function PixelArtOffice() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [canvasSize, setCanvasSize] = useState({
-    width: FALLBACK_CANVAS_W,
-    height: FALLBACK_CANVAS_H,
-  });
+  const [canvasSize, setCanvasSize] = useState({ width: FALLBACK_CANVAS_W, height: FALLBACK_CANVAS_H });
   const [canvasScale, setCanvasScale] = useState(1);
 
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [loadingAssetType, setLoadingAssetType] = useState<OfficeAssetType | null>(null);
+  const [generatingType, setGeneratingType] = useState<OfficeAssetType | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [persistMessage, setPersistMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
   const [studioImage, setStudioImage] = useState<HTMLImageElement | null>(null);
   const [studioAssetUrl, setStudioAssetUrl] = useState<string | null>(null);
   const [defaultAssetUrls, setDefaultAssetUrls] = useState<Partial<Record<OfficeAssetType, string>>>({});
-  // Stored variants per asset (from Supabase via studio-config)
   const [assetVariants, setAssetVariants] = useState<AssetVariantsMap>({});
-  // Which variant slot is currently generating: `${assetType}_v${variant}`
-  const [loadingVariant, setLoadingVariant] = useState<string | null>(null);
+
   const [assets, setAssets] = useState<OfficeAssetInstance[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
-    mobilier: true,
-    deco: true,
-    equipements: true,
-  });
+  const [changingAngleFor, setChangingAngleFor] = useState<string | null>(null);
 
-  useEffect(() => {
-    initializeStudio();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [activeCategory, setActiveCategory] = useState<string>("mobilier");
+
+  useEffect(() => { initializeStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   useEffect(() => {
     const update = () => {
       if (!containerRef.current) return;
-      const width = containerRef.current.clientWidth;
-      setCanvasScale(Math.min(1, width / canvasSize.width));
+      setCanvasScale(Math.min(1, containerRef.current.clientWidth / canvasSize.width));
     };
-
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -421,592 +359,401 @@ export function PixelArtOffice() {
 
   const stageW = canvasSize.width * canvasScale;
   const stageH = canvasSize.height * canvasScale;
+  const selectedAsset = assets.find((a) => a.id === selectedAssetId) ?? null;
 
-  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) ?? null;
+  // ── Persist variant URL ────────────────────────────────────────────────────
+  const persistVariant = (assetType: OfficeAssetType, variant: AssetVariant, url: string) => {
+    const stableUrl = url.split("?")[0];
+    void fetch("/api/office/studio-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "asset-variant", assetType, variant, url: stableUrl }),
+    });
+    setAssetVariants((prev) => ({
+      ...prev,
+      [assetType]: { ...prev[assetType], [variant]: url },
+    }));
+  };
 
+  // ── Restore layout ─────────────────────────────────────────────────────────
   const restoreLayout = async (layout: StudioLayoutPayload) => {
     const bg = await loadImage(layout.studioAssetUrl);
-    if (!bg) throw new Error("Impossible de charger le fond sauvegarde.");
-
-    const width = layout.canvas?.width || bg.naturalWidth || bg.width || FALLBACK_CANVAS_W;
-    const height = layout.canvas?.height || bg.naturalHeight || bg.height || FALLBACK_CANVAS_H;
-
-    const restoredAssets = await Promise.all(
-      (layout.assets ?? []).map(async (asset, index) => {
-        const image = await loadImage(asset.sourceUrl);
+    if (!bg) throw new Error("Impossible de charger le fond sauvegardé.");
+    const width = layout.canvas?.width || bg.naturalWidth || FALLBACK_CANVAS_W;
+    const height = layout.canvas?.height || bg.naturalHeight || FALLBACK_CANVAS_H;
+    const restored = await Promise.all(
+      (layout.assets ?? []).map(async (a, i) => {
+        const image = await loadImage(a.sourceUrl);
         if (!image) return null;
         return {
-          id: `${asset.type}-${Date.now()}-${index}`,
-          type: asset.type,
-          sourceUrl: asset.sourceUrl,
+          id: `${a.type}-${Date.now()}-${i}`,
+          type: a.type,
+          sourceUrl: a.sourceUrl,
           image,
-          x: asset.x,
-          y: asset.y,
-          width: asset.width,
-          height: asset.height,
+          x: a.x, y: a.y,
+          width: a.width, height: a.height,
+          variant: (a.variant ?? 1) as AssetVariant,
         } satisfies OfficeAssetInstance;
       })
     );
-
     setStudioImage(bg);
     setStudioAssetUrl(layout.studioAssetUrl);
     setCanvasSize({ width, height });
-    setAssets(restoredAssets.filter((asset): asset is OfficeAssetInstance => !!asset));
+    setAssets(restored.filter((a): a is OfficeAssetInstance => !!a));
     setSelectedAssetId(null);
   };
 
+  // ── Initialize ─────────────────────────────────────────────────────────────
   const initializeStudio = async () => {
     setStatus("loading");
-    setErrorMessage(null);
-
     try {
-      const configRes = await fetch("/api/office/studio-config", { cache: "no-store" });
-      const config = (await configRes.json()) as StudioConfigResponse;
+      const res = await fetch("/api/office/studio-config", { cache: "no-store" });
+      const config = (await res.json()) as StudioConfigResponse;
 
-      const defaults = config.defaultAssets ?? {};
-      setDefaultAssetUrls(defaults as Partial<Record<OfficeAssetType, string>>);
-      setAssetVariants(config.variants ?? {});
+      setDefaultAssetUrls((config.defaultAssets ?? {}) as Partial<Record<OfficeAssetType, string>>);
+
+      // Cache-bust restored variant URLs
+      const ts = Date.now();
+      const busted: AssetVariantsMap = {};
+      for (const [type, map] of Object.entries(config.variants ?? {})) {
+        busted[type as OfficeAssetType] = {};
+        for (const [v, url] of Object.entries(map ?? {})) {
+          if (url) busted[type as OfficeAssetType]![Number(v) as AssetVariant] = `${(url as string).split("?")[0]}?t=${ts}`;
+        }
+      }
+      setAssetVariants(busted);
 
       if (config.layout) {
         await restoreLayout(config.layout);
-        setPersistMessage("Studio restauré depuis la BDD.");
         setStatus("ready");
         return;
       }
 
-      await loadStudioAsset(false, defaults);
+      await loadBackground(false, config.defaultAssets ?? {});
     } catch {
-      await loadStudioAsset(false);
+      await loadBackground(false, {});
     }
   };
 
-  const loadStudioAsset = async (
-    force = false,
-    defaultsOverride?: Partial<Record<OfficeAssetType, string>>
-  ) => {
+  // ── Load/generate background ───────────────────────────────────────────────
+  const loadBackground = async (force = false, defaultsOverride?: Partial<Record<string, string>>) => {
     setStatus("loading");
-    setLoadingAssetType("studio_empty");
-    setErrorMessage(null);
-    setPersistMessage(null);
+    setGeneratingType("studio_empty");
 
     if (!force) {
-      const defaultUrl = defaultsOverride?.studio_empty ?? defaultAssetUrls.studio_empty;
-      if (defaultUrl) {
-        const defaultImage = await loadImage(defaultUrl);
-        if (defaultImage) {
-          const width = defaultImage.naturalWidth || defaultImage.width || FALLBACK_CANVAS_W;
-          const height = defaultImage.naturalHeight || defaultImage.height || FALLBACK_CANVAS_H;
-          setStudioImage(defaultImage);
-          setStudioAssetUrl(defaultUrl);
-          setCanvasSize({ width, height });
+      const url = defaultsOverride?.studio_empty ?? defaultAssetUrls.studio_empty;
+      if (url) {
+        const img = await loadImage(url);
+        if (img) {
+          setStudioImage(img);
+          setStudioAssetUrl(url);
+          setCanvasSize({ width: img.naturalWidth || FALLBACK_CANVAS_W, height: img.naturalHeight || FALLBACK_CANVAS_H });
           setStatus("ready");
-          setLoadingAssetType(null);
+          setGeneratingType(null);
           return;
         }
       }
     }
 
-    const generated = await generateAndLoadAssetWithUrl("studio_empty", force);
-    setLoadingAssetType(null);
-
-    if (!generated) {
-      setStatus("error");
-      setErrorMessage("Impossible de générer le studio vide.");
-      return;
-    }
-
-    const { image, url } = generated;
-    const width = image.naturalWidth || image.width || FALLBACK_CANVAS_W;
-    const height = image.naturalHeight || image.height || FALLBACK_CANVAS_H;
-
-    setStudioImage(image);
-    setStudioAssetUrl(url);
-    setCanvasSize({ width, height });
+    const generated = await generateAndLoadAssetWithUrl("studio_empty", 1, force);
+    setGeneratingType(null);
+    if (!generated) { setStatus("error"); setErrorMessage("Impossible de générer le studio."); return; }
+    setStudioImage(generated.image);
+    setStudioAssetUrl(generated.url);
+    setCanvasSize({ width: generated.image.naturalWidth || FALLBACK_CANVAS_W, height: generated.image.naturalHeight || FALLBACK_CANVAS_H });
     setStatus("ready");
   };
 
-  // Place an asset on the canvas from a specific variant URL
-  const placeAssetFromUrl = (assetType: PlaceableOfficeAssetType, sourceUrl: string, image: HTMLImageElement) => {
-    const placement = ASSET_PLACEMENT[assetType] ?? {
-      idPrefix: "asset",
-      baseSize: DEFAULT_ASSET_SIZE,
-      errorMessage: "",
-    };
+  // ── Place asset — called when user clicks a catalog item ───────────────────
+  const handleCatalogClick = async (type: PlaceableOfficeAssetType) => {
+    // Pick first available variant, default to 1
+    const existingVariant = ([1, 2, 3, 4] as AssetVariant[]).find((v) => assetVariants[type]?.[v]);
+    const variant: AssetVariant = existingVariant ?? 1;
+    const existingUrl = assetVariants[type]?.[variant];
+
+    if (existingUrl) {
+      const img = await loadImage(existingUrl);
+      if (img) { placeAsset(type, existingUrl, img, variant); return; }
+    }
+
+    // Generate on demand
+    setGeneratingType(type);
+    setErrorMessage(null);
+    const url = await fetchOrGenerateVariant(type, 1, false);
+    setGeneratingType(null);
+
+    if (!url) { setErrorMessage(`Impossible de générer ${ASSET_LABELS[type]}.`); return; }
+    persistVariant(type, 1, url);
+    const img = await loadImage(url);
+    if (img) placeAsset(type, url, img, 1);
+  };
+
+  // ── Place an asset instance on canvas ─────────────────────────────────────
+  const placeAsset = (type: PlaceableOfficeAssetType, sourceUrl: string, image: HTMLImageElement, variant: AssetVariant) => {
+    const { idPrefix, baseSize } = ASSET_PLACEMENT[type];
     const newAsset: OfficeAssetInstance = {
-      id: `${placement.idPrefix}-${Date.now()}`,
-      type: assetType,
-      sourceUrl,
-      image,
-      x: Math.round(canvasSize.width / 2 - placement.baseSize / 2),
-      y: Math.round(canvasSize.height / 2 - placement.baseSize / 2),
-      width: placement.baseSize,
-      height: placement.baseSize,
+      id: `${idPrefix}-${Date.now()}`,
+      type, sourceUrl, image, variant,
+      x: Math.round(canvasSize.width / 2 - baseSize / 2),
+      y: Math.round(canvasSize.height / 2 - baseSize / 2),
+      width: baseSize, height: baseSize,
     };
     setAssets((prev) => [...prev, newAsset]);
     setSelectedAssetId(newAsset.id);
+    setStatus("ready");
   };
 
-  // Generate (or fetch cached) a variant and optionally place it on canvas
-  const generateVariant = async (
-    assetType: PlaceableOfficeAssetType,
-    variant: AssetVariant,
-    place = false,
-    force = false
-  ) => {
-    const variantKey = `${assetType}_v${variant}`;
-    setLoadingVariant(variantKey);
-    setErrorMessage(null);
+  // ── Change angle of selected asset ────────────────────────────────────────
+  // needsGeneration=true only when user explicitly confirmed
+  // needsGeneration: user confirmed a generate/regen — force=true for regen
+  const changeAngle = async (assetId: string, type: PlaceableOfficeAssetType, variant: AssetVariant, needsGeneration: boolean, force = false) => {
+    const existingUrl = assetVariants[type]?.[variant];
 
-    const url = await fetchOrGenerateVariant(assetType, variant, force);
-
-    if (!url) {
-      setLoadingVariant(null);
-      setErrorMessage(`Impossible de générer la variante ${VARIANT_LABELS[variant]} pour ${assetType}.`);
-      return;
-    }
-
-    // Persist to Supabase
-    void fetch("/api/office/studio-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "asset-variant", assetType, variant, url }),
-    });
-
-    setAssetVariants((prev) => ({
-      ...prev,
-      [assetType]: { ...prev[assetType], [variant]: url },
-    }));
-
-    setLoadingVariant(null);
-
-    if (place) {
-      const image = await loadImage(url);
-      if (image) placeAssetFromUrl(assetType, url, image);
-    }
-  };
-
-  const loadCatalogAsset = async (assetType: PlaceableOfficeAssetType, force = false) => {
-    const placement = ASSET_PLACEMENT[assetType] ?? {
-      idPrefix: "asset",
-      baseSize: DEFAULT_ASSET_SIZE,
-      errorMessage: "Impossible de generer cet asset.",
-    };
-
-    setStatus("loading");
-    setLoadingAssetType(assetType);
-    setErrorMessage(null);
-    setPersistMessage(null);
-
-    let sourceUrl = "";
-    let image: HTMLImageElement | null = null;
-
-    // Use existing variant 1 if available
-    const v1Url = assetVariants[assetType]?.[1] ?? defaultAssetUrls[assetType];
-    if (!force && v1Url) {
-      sourceUrl = v1Url;
-      image = await loadImage(sourceUrl);
-    }
-
-    if (!image) {
-      const generated = await generateAndLoadAssetWithUrl(assetType, 1, force);
-      if (generated) {
-        image = generated.image;
-        sourceUrl = generated.url;
-        // Persist as variant 1
-        void fetch("/api/office/studio-config", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind: "asset-variant", assetType, variant: 1, url: sourceUrl }),
-        });
-        setAssetVariants((prev) => ({
-          ...prev,
-          [assetType]: { ...prev[assetType], 1: sourceUrl },
-        }));
+    if (existingUrl && !force) {
+      const img = await loadImage(existingUrl);
+      if (img) {
+        setAssets((prev) => prev.map((a) =>
+          a.id === assetId ? { ...a, sourceUrl: existingUrl, image: img, variant } : a
+        ));
+        return;
       }
     }
 
-    setLoadingAssetType(null);
+    if (!needsGeneration) return;
 
-    if (!image || !sourceUrl) {
-      setStatus("error");
-      setErrorMessage(placement.errorMessage);
-      return;
-    }
+    setChangingAngleFor(assetId);
+    const url = await fetchOrGenerateVariant(type, variant, force);
+    setChangingAngleFor(null);
+    if (!url) return;
 
-    const now = Date.now();
-    const newAsset: OfficeAssetInstance = {
-      id: `${placement.idPrefix}-${now}`,
-      type: assetType,
-      sourceUrl,
-      image,
-      x: Math.round(canvasSize.width / 2 - placement.baseSize / 2),
-      y: Math.round(canvasSize.height / 2 - placement.baseSize / 2),
-      width: placement.baseSize,
-      height: placement.baseSize,
-    };
-
-    setAssets((prev) => [...prev, newAsset]);
-    setSelectedAssetId(newAsset.id);
-    setStatus("ready");
+    persistVariant(type, variant, url);
+    const img = await loadImage(url);
+    if (!img) return;
+    setAssets((prev) => prev.map((a) =>
+      a.id === assetId ? { ...a, sourceUrl: url, image: img, variant } : a
+    ));
   };
 
-  const updateSelectedAssetSize = (multiplier: number) => {
+  // ── Resize selected asset ──────────────────────────────────────────────────
+  const resizeSelected = (mult: number) => {
     if (!selectedAssetId) return;
-    setAssets((prev) =>
-      prev.map((asset) => {
-        if (asset.id !== selectedAssetId) return asset;
-        const nextWidth = Math.max(64, Math.min(1200, Math.round(asset.width * multiplier)));
-        const nextHeight = Math.max(64, Math.min(1200, Math.round(asset.height * multiplier)));
-        return { ...asset, width: nextWidth, height: nextHeight };
-      })
-    );
+    setAssets((prev) => prev.map((a) => {
+      if (a.id !== selectedAssetId) return a;
+      return {
+        ...a,
+        width: Math.max(64, Math.min(1200, Math.round(a.width * mult))),
+        height: Math.max(64, Math.min(1200, Math.round(a.height * mult))),
+      };
+    }));
   };
 
-  const duplicateSelectedAsset = () => {
+  // ── Duplicate / delete ─────────────────────────────────────────────────────
+  const duplicateSelected = () => {
     if (!selectedAsset) return;
-    const duplicated: OfficeAssetInstance = {
-      ...selectedAsset,
-      id: `asset-${Date.now()}`,
-      x: selectedAsset.x + 24,
-      y: selectedAsset.y + 24,
-    };
-    setAssets((prev) => [...prev, duplicated]);
-    setSelectedAssetId(duplicated.id);
+    const dup: OfficeAssetInstance = { ...selectedAsset, id: `asset-${Date.now()}`, x: selectedAsset.x + 24, y: selectedAsset.y + 24 };
+    setAssets((prev) => [...prev, dup]);
+    setSelectedAssetId(dup.id);
   };
 
-  const deleteSelectedAsset = () => {
+  const deleteSelected = () => {
     if (!selectedAssetId) return;
-    setAssets((prev) => prev.filter((asset) => asset.id !== selectedAssetId));
+    setAssets((prev) => prev.filter((a) => a.id !== selectedAssetId));
     setSelectedAssetId(null);
   };
 
-  const saveDefaultAsset = async (assetType: OfficeAssetType, url: string) => {
-    try {
-      setPersistMessage("Sauvegarde de l'asset par défaut...");
-      const res = await fetch("/api/office/studio-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "default-asset", assetType, url }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Echec sauvegarde");
-      }
-
-      setDefaultAssetUrls((data.defaultAssets ?? {}) as Partial<Record<OfficeAssetType, string>>);
-      setPersistMessage(`Défaut mis à jour pour ${assetType}.`);
-    } catch {
-      setPersistMessage("Erreur lors de la sauvegarde.");
-    }
-  };
-
-  const saveStudioLayout = async () => {
-    if (!studioAssetUrl) {
-      setPersistMessage("Générez d'abord un studio vide avant de sauvegarder.");
-      return;
-    }
-
+  // ── Save layout ────────────────────────────────────────────────────────────
+  const saveLayout = async () => {
+    if (!studioAssetUrl) return;
+    setSaveMessage("Sauvegarde...");
     const layout: StudioLayoutPayload = {
       canvas: { width: canvasSize.width, height: canvasSize.height },
       studioAssetUrl,
-      assets: assets.map((asset) => ({
-        type: asset.type,
-        sourceUrl: asset.sourceUrl,
-        x: asset.x,
-        y: asset.y,
-        width: asset.width,
-        height: asset.height,
-      })),
+      assets: assets.map((a) => ({ type: a.type, sourceUrl: a.sourceUrl, x: a.x, y: a.y, width: a.width, height: a.height, variant: a.variant })),
     };
-
     try {
-      setPersistMessage("Sauvegarde du studio...");
-      const res = await fetch("/api/office/studio-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "layout", layout }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(typeof data?.error === "string" ? data.error : "Echec sauvegarde studio");
-      }
-
-      setPersistMessage("Studio sauvegardé !");
+      const res = await fetch("/api/office/studio-config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "layout", layout }) });
+      if (!res.ok) throw new Error();
+      setSaveMessage("Sauvegardé !");
+      setTimeout(() => setSaveMessage(null), 2000);
     } catch {
-      setPersistMessage("Erreur lors de la sauvegarde du studio.");
+      setSaveMessage("Erreur sauvegarde");
+      setTimeout(() => setSaveMessage(null), 2000);
     }
   };
 
-  const restoreStudioLayoutFromDb = async () => {
+  // ── Restore layout ─────────────────────────────────────────────────────────
+  const restoreFromDb = async () => {
     try {
       setStatus("loading");
-      setErrorMessage(null);
-      setPersistMessage("Restauration du studio...");
-
       const res = await fetch("/api/office/studio-config", { cache: "no-store" });
       const data = (await res.json()) as StudioConfigResponse;
-
-      if (!res.ok || !data.layout) {
-        setPersistMessage("Aucun studio sauvegardé trouvé.");
-        setStatus("ready");
-        return;
-      }
-
+      if (!data.layout) { setStatus("ready"); return; }
       await restoreLayout(data.layout);
-      setPersistMessage("Studio restauré !");
       setStatus("ready");
     } catch {
       setStatus("error");
-      setErrorMessage("Impossible de restaurer le studio.");
     }
   };
 
-  const isGlobalLoading = status === "loading";
-  const toggleCategory = (id: string) =>
-    setOpenCategories((prev) => ({ ...prev, [id]: !prev[id] }));
+  const activeCat = CATALOG_CATEGORIES.find((c) => c.id === activeCategory) ?? CATALOG_CATEGORIES[0];
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* ── Header toolbar ── */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
-            <Layers className="w-4 h-4 text-primary" />
-            <span className="text-sm font-bold text-primary">{assets.length}</span>
-            <span className="text-xs text-primary/60">assets</span>
-          </div>
+    <div className="flex h-full gap-0">
 
-          {/* Fond du studio */}
-          <div className="flex items-center gap-1">
+      {/* ── LEFT PANEL — Sims-style build catalog ── */}
+      <div className="w-48 shrink-0 flex flex-col border-r border-white/8 bg-black/20">
+
+        {/* Category tabs */}
+        <div className="flex flex-col gap-0.5 p-2 border-b border-white/8">
+          {CATALOG_CATEGORIES.map((cat) => (
             <button
-              onClick={() => loadStudioAsset(false)}
-              disabled={isGlobalLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600/80 border border-violet-400/30 text-white text-xs font-semibold hover:bg-violet-500/80 transition-all disabled:opacity-50 shadow-lg shadow-violet-500/10"
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={[
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-left",
+                activeCategory === cat.id
+                  ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
+                  : "text-white/40 hover:text-white/70 hover:bg-white/5",
+              ].join(" ")}
             >
-              {loadingAssetType === "studio_empty" ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5" />
-              )}
-              Générer fond
+              <span className="opacity-70">{cat.icon}</span>
+              {cat.label}
             </button>
-            <button
-              onClick={() => loadStudioAsset(true)}
-              disabled={isGlobalLoading}
-              title="Régénérer"
-              className="p-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:bg-white/5 transition-all disabled:opacity-30"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-            </button>
-            {studioAssetUrl && (
-              <button
-                onClick={() => void saveDefaultAsset("studio_empty", studioAssetUrl)}
-                disabled={isGlobalLoading}
-                title="Valider comme fond par défaut"
-                className="p-1.5 rounded-xl border border-emerald-400/20 text-emerald-400/60 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all disabled:opacity-30"
-              >
-                <Star className="w-3.5 h-3.5" />
-              </button>
-            )}
+          ))}
+        </div>
+
+        {/* Item grid */}
+        <div className="flex-1 overflow-y-auto p-2">
+          <div className="grid grid-cols-3 gap-1.5">
+            {activeCat.items.map((type) => (
+              <CatalogItem
+                key={type}
+                type={type}
+                variants={assetVariants[type] ?? {}}
+                isGenerating={generatingType === type}
+                onClick={() => void handleCatalogClick(type)}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Save / Restore */}
-        <div className="flex items-center gap-1.5">
-          {persistMessage && (
-            <span className="text-xs text-emerald-300/80 flex items-center gap-1">
-              <Check className="w-3 h-3" />
-              {persistMessage}
-            </span>
-          )}
+        {/* Bottom: background */}
+        <div className="p-2 border-t border-white/8">
           <button
-            onClick={restoreStudioLayoutFromDb}
-            disabled={isGlobalLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-xs text-white/60 hover:text-white hover:bg-white/5 transition-all disabled:opacity-30"
+            onClick={() => void loadBackground(true)}
+            disabled={status === "loading"}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:bg-white/5 transition-all disabled:opacity-30"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Restaurer
-          </button>
-          <button
-            onClick={saveStudioLayout}
-            disabled={!studioImage || isGlobalLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/80 border border-emerald-400/30 text-white text-xs font-semibold hover:bg-emerald-500/80 transition-all disabled:opacity-40 shadow-lg shadow-emerald-500/10"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Sauvegarder
+            {generatingType === "studio_empty" ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Sparkles className="w-3 h-3" />
+            )}
+            Nouveau fond
           </button>
         </div>
       </div>
 
-      {errorMessage && (
-        <div className="px-3 py-2 rounded-xl border border-red-500/30 bg-red-950/40 text-sm text-red-200">
-          {errorMessage}
-        </div>
-      )}
+      {/* ── RIGHT — Canvas + toolbar ── */}
+      <div className="flex-1 min-w-0 flex flex-col gap-2 p-3">
 
-      {/* ── Main layout: sidebar + canvas ── */}
-      <div className="flex gap-3 items-start">
-
-        {/* ── Catalogue sidebar ── */}
-        <div className="w-60 shrink-0 space-y-2">
-          <p className="text-xs font-bold text-white/30 uppercase tracking-widest px-1">Catalogue</p>
-
-          {ASSET_CATEGORIES.map((cat) => (
-            <div key={cat.id} className={`rounded-2xl border ${cat.borderColor} bg-linear-to-b ${cat.color} overflow-hidden`}>
-              <button
-                onClick={() => toggleCategory(cat.id)}
-                className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-white/60">{cat.icon}</span>
-                  <span className="text-xs font-bold text-white/80">{cat.label}</span>
-                  <span className="text-xs text-white/30 bg-white/5 rounded-full px-1.5 py-0.5">
-                    {cat.items.length}
-                  </span>
-                </div>
-                {openCategories[cat.id] ? (
-                  <ChevronUp className="w-3.5 h-3.5 text-white/30" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-white/30" />
-                )}
-              </button>
-
-              {openCategories[cat.id] && (
-                <div className="px-2 pb-2 space-y-2">
-                  {cat.items.map((item) => (
-                    <AssetCard
-                      key={item.type}
-                      item={item}
-                      variants={assetVariants[item.type] ?? {}}
-                      loadingVariant={loadingVariant}
-                      onGenerate={(variant, force) => {
-                        void generateVariant(item.type, variant, false, force);
-                      }}
-                      onPlace={(variant) => {
-                        const url = assetVariants[item.type]?.[variant];
-                        if (url) {
-                          void loadImage(url).then((image) => {
-                            if (image) placeAssetFromUrl(item.type, url, image);
-                          });
-                        } else {
-                          void generateVariant(item.type, variant, true);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Placeholder catégorie verrouillée */}
-          <div className="rounded-2xl border border-white/5 bg-white/2 overflow-hidden opacity-40">
-            <div className="flex items-center justify-between px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-white/30" />
-                <span className="text-xs font-bold text-white/40">Fournitures</span>
-                <span className="text-xs text-white/20 bg-white/5 rounded-full px-1.5 py-0.5">bientôt</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Canvas area ── */}
-        <div className="flex-1 min-w-0 space-y-2">
-          <div
-            ref={containerRef}
-            className="relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-slate-950"
-          >
-            {status === "idle" && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-                <Sparkles className="w-8 h-8 text-violet-400/50" />
-                <span>Générez le fond pour commencer</span>
-              </div>
+        {/* Top toolbar — minimal */}
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-white/25">{assets.length} objet{assets.length !== 1 ? "s" : ""}</span>
+          <div className="flex items-center gap-1.5">
+            {saveMessage && (
+              <span className="text-[11px] text-emerald-400/80 flex items-center gap-1">
+                <Check className="w-3 h-3" /> {saveMessage}
+              </span>
             )}
-
-            {isGlobalLoading && !studioImage && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                <span className="text-sm text-white/50">Génération en cours...</span>
-              </div>
+            {errorMessage && (
+              <span className="text-[11px] text-red-400/80">{errorMessage}</span>
             )}
-
-            <Stage
-              width={stageW}
-              height={stageH}
-              scaleX={canvasScale}
-              scaleY={canvasScale}
-              style={{ mixBlendMode: "normal" }}
-              onClick={(e) => {
-                if (e.target === e.target.getStage()) setSelectedAssetId(null);
-              }}
+            <button
+              onClick={restoreFromDb}
+              disabled={status === "loading"}
+              className="p-1.5 rounded-lg border border-white/10 text-white/30 hover:text-white/60 hover:bg-white/5 transition-all disabled:opacity-30"
+              title="Restaurer"
             >
-              <Layer>
-                <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} fill="#1a1025" />
-                {studioImage && (
-                  <KImage image={studioImage} x={0} y={0} width={canvasSize.width} height={canvasSize.height} />
-                )}
-                {assets.map((asset) => {
-                  const isSelected = asset.id === selectedAssetId;
-                  return (
-                    <KImage
-                      key={asset.id}
-                      image={asset.image}
-                      x={asset.x}
-                      y={asset.y}
-                      width={asset.width}
-                      height={asset.height}
-                      draggable
-                      onClick={() => setSelectedAssetId(asset.id)}
-                      onTap={() => setSelectedAssetId(asset.id)}
-                      onDragEnd={(evt) => {
-                        const node = evt.target;
-                        setAssets((prev) =>
-                          prev.map((current) =>
-                            current.id === asset.id
-                              ? { ...current, x: node.x(), y: node.y() }
-                              : current
-                          )
-                        );
-                      }}
-                      opacity={isSelected ? 1 : 0.95}
-                      stroke={isSelected ? "#a5b4fc" : undefined}
-                      strokeWidth={isSelected ? 2 : 0}
-                    />
-                  );
-                })}
-              </Layer>
-
-              <Layer listening={false}>
-                <Text
-                  x={12}
-                  y={12}
-                  text={
-                    studioImage
-                      ? `${canvasSize.width} × ${canvasSize.height}`
-                      : "Le studio vide définira la taille du canvas"
-                  }
-                  fontSize={12}
-                  fill="rgba(255,255,255,0.35)"
-                />
-              </Layer>
-            </Stage>
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={saveLayout}
+              disabled={!studioImage || status === "loading"}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/70 border border-indigo-400/30 text-white text-[11px] font-semibold hover:bg-indigo-500/70 transition-all disabled:opacity-30"
+            >
+              <Save className="w-3.5 h-3.5" />
+              Sauvegarder
+            </button>
           </div>
-
-          {/* ── Selected asset panel (sous le canvas) ── */}
-          {selectedAsset && (
-            <SelectedAssetPanel
-              asset={selectedAsset}
-              onSize={updateSelectedAssetSize}
-              onDuplicate={duplicateSelectedAsset}
-              onDelete={deleteSelectedAsset}
-              onSaveDefault={() => void saveDefaultAsset(selectedAsset.type, selectedAsset.sourceUrl)}
-              onClose={() => setSelectedAssetId(null)}
-            />
-          )}
         </div>
+
+        {/* Canvas */}
+        <div ref={containerRef} className="relative rounded-xl overflow-hidden border border-white/10 bg-slate-950">
+          {status === "loading" && !studioImage && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+              <span className="text-sm text-white/40">Génération en cours...</span>
+            </div>
+          )}
+
+          <Stage
+            width={stageW}
+            height={stageH}
+            scaleX={canvasScale}
+            scaleY={canvasScale}
+            onClick={(e) => { if (e.target === e.target.getStage()) setSelectedAssetId(null); }}
+          >
+            <Layer>
+              <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} fill="#1a1025" />
+              {studioImage && (
+                <KImage image={studioImage} x={0} y={0} width={canvasSize.width} height={canvasSize.height} />
+              )}
+              {assets.map((asset) => {
+                const isSelected = asset.id === selectedAssetId;
+                return (
+                  <KImage
+                    key={asset.id}
+                    image={asset.image}
+                    x={asset.x}
+                    y={asset.y}
+                    width={asset.width}
+                    height={asset.height}
+                    draggable
+                    onClick={() => setSelectedAssetId(asset.id)}
+                    onTap={() => setSelectedAssetId(asset.id)}
+                    onDragEnd={(e) => {
+                      const node = e.target;
+                      setAssets((prev) => prev.map((a) =>
+                        a.id === asset.id ? { ...a, x: node.x(), y: node.y() } : a
+                      ));
+                    }}
+                    opacity={isSelected ? 1 : 0.95}
+                    stroke={isSelected ? "#818cf8" : undefined}
+                    strokeWidth={isSelected ? 2 : 0}
+                  />
+                );
+              })}
+            </Layer>
+            <Layer listening={false}>
+              <Text x={10} y={10} text={studioImage ? `${canvasSize.width} × ${canvasSize.height}` : ""} fontSize={11} fill="rgba(255,255,255,0.2)" />
+            </Layer>
+          </Stage>
+        </div>
+
+        {/* Selected asset bar */}
+        {selectedAsset && (
+          <SelectedAssetPanel
+            asset={selectedAsset}
+            variants={assetVariants[selectedAsset.type] ?? {}}
+            isChangingAngle={changingAngleFor === selectedAsset.id}
+            onSize={resizeSelected}
+            onAngle={(v, needsGeneration, force) => void changeAngle(selectedAsset.id, selectedAsset.type as PlaceableOfficeAssetType, v, needsGeneration, force)}
+            onDuplicate={duplicateSelected}
+            onDelete={deleteSelected}
+            onClose={() => setSelectedAssetId(null)}
+          />
+        )}
       </div>
     </div>
   );

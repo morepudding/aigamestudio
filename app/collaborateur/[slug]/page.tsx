@@ -57,6 +57,7 @@ interface AgentDetail {
   mood: string | null;
   mood_cause: string | null;
   confidence_level: number | null;
+  personality_bio: string | null;
 }
 
 
@@ -211,8 +212,13 @@ export default function AgentDetailPage() {
         setAgent(agentData);
         setMemories(memoriesData);
         setImageVersion(Date.now());
-        // Fetch AI personality phrases
-        fetchPersonalityPhrases(agentData);
+        if (agentData.personality_bio) {
+          // Use cached bio — no LLM call needed
+          setPersonalityBio(agentData.personality_bio);
+        } else {
+          // Generate and cache for next time
+          fetchPersonalityPhrases(agentData);
+        }
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -251,6 +257,7 @@ export default function AgentDetailPage() {
           agentRole: agentData.role,
           department: agentData.department,
           traits,
+          slug: agentData.slug,
         }),
       });
       if (res.ok) {

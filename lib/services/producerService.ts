@@ -7,14 +7,12 @@ import {
 } from "@/lib/prompts/templates/docs";
 import { createTask, getTasksByProject, advancePipeline, updateTaskPrompt } from "@/lib/services/pipelineService";
 import { getAllAgents } from "@/lib/services/agentService";
-import { getAnsweredDecisions, buildDecisionsContext, buildDecisionConstraints, areDecisionsReady } from "@/lib/services/decisionService";
 import { getSessionByProject } from "@/lib/services/brainstormingService";
 import { buildAuditPrompt } from "@/lib/prompts/gddReview";
 import { normalizeMarkdownDeliverable } from "@/lib/utils";
 import type { Project } from "@/lib/types/project";
 import type { PipelineTask, DeliverableType } from "@/lib/types/task";
 import type { Agent } from "@/lib/services/agentService";
-import type { ProjectDecision } from "@/lib/types/decision";
 import type { RepoTextFileSnapshot } from "@/lib/services/githubService";
 
 // ============================================================
@@ -28,7 +26,7 @@ interface ConceptDocDef {
   deliverablePath: string;
   requiresReview: boolean;
   agentDepartment: string;
-  promptBuilder: (project: Project, decisionsContext?: string, decisions?: ProjectDecision[]) => string;
+  promptBuilder: (project: Project) => string;
 }
 
 const CONCEPT_DOCS: ConceptDocDef[] = [
@@ -40,7 +38,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     deliverablePath: "docs/gdd.md",
     requiresReview: true,
     agentDepartment: "game-design",
-    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Game Designer senior", GDD_TEMPLATE, dc, decisions),
+    promptBuilder: (p) => buildDocPrompt(p, "Game Designer senior", GDD_TEMPLATE),
   },
   {
     sortOrder: 2,
@@ -50,7 +48,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     deliverablePath: "docs/tech-spec.md",
     requiresReview: true,
     agentDepartment: "programming",
-    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Lead Developer web senior", TECH_SPEC_TEMPLATE, dc, decisions),
+    promptBuilder: (p) => buildDocPrompt(p, "Lead Developer web senior", TECH_SPEC_TEMPLATE),
   },
   {
     sortOrder: 3,
@@ -60,7 +58,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     deliverablePath: "docs/backlog.md",
     requiresReview: true,
     agentDepartment: "production",
-    promptBuilder: (p, dc, decisions) => buildBacklogPrompt(p, dc, decisions),
+    promptBuilder: (p) => buildBacklogPrompt(p),
   },
   {
     sortOrder: 4,
@@ -70,7 +68,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     deliverablePath: "docs/course-design.md",
     requiresReview: true,
     agentDepartment: "narrative",
-    promptBuilder: (p, dc, decisions) => buildCourseDesignPrompt(p, dc, decisions),
+    promptBuilder: (p) => buildCourseDesignPrompt(p),
   },
   {
     sortOrder: 5,
@@ -80,7 +78,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     deliverablePath: "README.md",
     requiresReview: true,
     agentDepartment: "game-design",
-    promptBuilder: (p, dc, decisions) => buildReadmePrompt(p, dc, decisions),
+    promptBuilder: (p) => buildReadmePrompt(p),
   },
 ];
 
@@ -110,13 +108,7 @@ function buildSpyUniversityContext(project: Project): string {
   return lines.join("\n");
 }
 
-function buildDocPrompt(project: Project, role: string, template: string, decisionsContext?: string, decisions?: ProjectDecision[]): string {
-  const decisionsBlock = decisionsContext
-    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
-    : "";
-  const constraintsBlock = decisions && decisions.length > 0
-    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
-    : "";
+function buildDocPrompt(project: Project, role: string, template: string): string {
   const spyContext = buildSpyUniversityContext(project);
 
   return `Tu es ${role} dans un studio de jeu vidéo indépendant.
@@ -125,7 +117,7 @@ ${spyContext}
 
 Tu travailles sur le mini-jeu "${project.title}" : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
-${decisionsBlock}${constraintsBlock}
+
 Rédige le document demandé en suivant EXACTEMENT cette structure :
 
 ${template.replace(/{titre}/g, project.title)}
@@ -135,9 +127,6 @@ RÈGLES IMPÉRATIVES :
 - Chaque section doit être actionnable pour un développeur web
 - Utilise des exemples concrets adaptés au genre "${project.genre}" et au thème espion
 - Garde toujours en tête que ce jeu doit fonctionner dans un navigateur et s'intégrer dans un VN
-- RESPECTE IMPÉRATIVEMENT les décisions du directeur listées ci-dessus
-- RESPECTE IMPÉRATIVEMENT les garde-fous listés ci-dessus — ne les contourne JAMAIS
-- Si tu dois décider d'un point NON couvert par les décisions du directeur, marque-le avec [DÉCISION IA] en début de ligne
 - Format : Markdown propre, listes à puces, tableaux si pertinents
 - Rends le markdown BRUT, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation, sans guillemets autour du document
 - N'échappe jamais le document sous forme de chaîne avec des \n ou du JSON
@@ -146,14 +135,7 @@ RÈGLES IMPÉRATIVES :
 - Ne réponds QUE avec le contenu du document, sans introduction ni commentaire`;
 }
 
-function buildBacklogPrompt(project: Project, decisionsContext?: string, decisions?: ProjectDecision[]): string {
-  const decisionsBlock = decisionsContext
-    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
-    : "";
-  const constraintsBlock = decisions && decisions.length > 0
-    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
-    : "";
-
+function buildBacklogPrompt(project: Project): string {
   const spyContext = buildSpyUniversityContext(project);
 
   return `Tu es le Producer d'un studio de jeu vidéo indépendant.
@@ -162,7 +144,7 @@ ${spyContext}
 
 Tu travailles sur le mini-jeu "${project.title}" : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
-${decisionsBlock}${constraintsBlock}
+
 Génère le backlog de développement complet en suivant EXACTEMENT cette structure :
 
 ${BACKLOG_TEMPLATE.replace(/{titre}/g, project.title)}
@@ -174,22 +156,13 @@ RÈGLES IMPÉRATIVES :
 - Les dépendances doivent former un DAG sans cycles
 - Le graphe de dépendances final doit lister les waves clairement
 - Adapte les items au genre "${project.genre}", au moteur "${project.engine}" et à la plateforme web
-- RESPECTE IMPÉRATIVEMENT les décisions du directeur listées ci-dessus
-- RESPECTE IMPÉRATIVEMENT les garde-fous listés ci-dessus — ne les contourne JAMAIS
-- Si tu dois décider d'un point NON couvert par les décisions du directeur, marque-le avec [DÉCISION IA] en début de ligne
 - Rends le markdown BRUT, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation, sans guillemets autour du document
 - N'échappe jamais le document sous forme de chaîne avec des \n ou du JSON
 - Langue : Français
 - Ne réponds QUE avec le contenu du document, sans introduction ni commentaire`;
 }
 
-function buildCourseDesignPrompt(project: Project, decisionsContext?: string, decisions?: ProjectDecision[]): string {
-  const decisionsBlock = decisionsContext
-    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
-    : "";
-  const constraintsBlock = decisions && decisions.length > 0
-    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
-    : "";
+function buildCourseDesignPrompt(project: Project): string {
   const spyContext = buildSpyUniversityContext(project);
   const courseName = project.courseInfo?.courseName ?? project.title;
   const vnModule = project.courseInfo?.vnModule ?? "Semestre 1";
@@ -203,7 +176,7 @@ ${spyContext}
 
 Tu rédiges le document de design du cours et la spec d'intégration VN pour le mini-jeu "${project.title}".
 Engine web : ${webEngine} | URL cible d'intégration : ${targetUrl}
-${decisionsBlock}${constraintsBlock}
+
 Rédige le document en suivant EXACTEMENT cette structure :
 
 # Design du Cours & Intégration VN — ${courseName}
@@ -267,14 +240,7 @@ RÈGLES IMPÉRATIVES :
 - Ne réponds QUE avec le contenu du document`;
 }
 
-function buildReadmePrompt(project: Project, decisionsContext?: string, decisions?: ProjectDecision[]): string {
-  const decisionsBlock = decisionsContext
-    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
-    : "";
-  const constraintsBlock = decisions && decisions.length > 0
-    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
-    : "";
-
+function buildReadmePrompt(project: Project): string {
   const spyContext = buildSpyUniversityContext(project);
   const courseName = project.courseInfo?.courseName ?? project.title;
 
@@ -284,7 +250,7 @@ ${spyContext}
 
 Tu travailles sur le mini-jeu "${project.title}" (${courseName}) : ${project.description}
 Genre : ${project.genre} | Plateformes : ${project.platforms.join(", ")}
-${decisionsBlock}${constraintsBlock}
+
 Rédige le README public du mini-jeu en suivant EXACTEMENT cette structure :
 
 ${README_TEMPLATE.replace(/{titre}/g, project.title)}
@@ -353,16 +319,8 @@ function buildRepoGroundedPrompt(
   template: string,
   repoFiles: RepoTextFileSnapshot[],
   supportingDocs: Record<string, string | null>,
-  decisionsContext?: string,
-  decisions?: ProjectDecision[],
   extraRules: string[] = []
 ): string {
-  const decisionsBlock = decisionsContext
-    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
-    : "";
-  const constraintsBlock = decisions && decisions.length > 0
-    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
-    : "";
   const supportingDocsSection = buildSupportingDocsSection(supportingDocs);
 
   return `Tu es ${role} dans un studio de jeu vidéo indépendant.
@@ -370,7 +328,7 @@ Tu dois reconstruire une documentation fidèle au dépôt GitHub EXISTANT du jeu
 
 Pitch produit : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
-${decisionsBlock}${constraintsBlock}
+
 Contexte auxiliaire déjà présent dans le repo :
 ${supportingDocsSection || "Aucun document auxiliaire exploitable."}
 
@@ -457,12 +415,6 @@ export async function generateConceptPipeline(project: Project): Promise<Pipelin
 
   const agents = await getAllAgents();
 
-  // For backwards compat with enrichNextTaskPrompt, also fetch decisions if any exist
-  const answeredDecisions = await getAnsweredDecisions(project.id).catch(() => []);
-  const decisionsContext = answeredDecisions.length > 0
-    ? buildDecisionsContext(answeredDecisions)
-    : `# GDD finalisé\n\n${finalGdd}`;
-
   const createdTasks: PipelineTask[] = [];
 
   for (const doc of CONCEPT_DOCS) {
@@ -489,7 +441,7 @@ export async function generateConceptPipeline(project: Project): Promise<Pipelin
       llmModel: LLM_MODELS.tasks,
       llmPromptTemplate: isGddTask
         ? null
-        : doc.promptBuilder(project, decisionsContext, answeredDecisions),
+        : doc.promptBuilder(project),
       llmContextFiles: [],
       deliverableType: "markdown",
       deliverablePath: doc.deliverablePath,
@@ -640,11 +592,7 @@ export async function enrichNextTaskPrompt(
   const docDef = CONCEPT_DOCS.find((d) => d.deliverablePath === nextTask.deliverablePath);
   if (!docDef) return;
 
-  // Re-fetch decisions for prompt injection
-  const answeredDecisions = await getAnsweredDecisions(projectId);
-  const decisionsContext = buildDecisionsContext(answeredDecisions);
-
-  const basePrompt = docDef.promptBuilder(project, decisionsContext, answeredDecisions);
+  const basePrompt = docDef.promptBuilder(project);
   const enrichedPrompt = `${basePrompt}\n\n---\n\n## Documents déjà validés (contexte)\n\n${contextSection}`;
 
   await updateTaskPrompt(nextTask.id, enrichedPrompt);
@@ -662,8 +610,6 @@ export async function regenerateProjectDocsFromRepo(
   }
 
   const { getRepositorySnapshot, getFileContent, pushFile } = await import("@/lib/services/githubService");
-  const answeredDecisions = await getAnsweredDecisions(projectId);
-  const decisionsContext = buildDecisionsContext(answeredDecisions);
   const existingDevTasks = await getTasksByProject(projectId, "in-dev");
   const repoFiles = await getRepositorySnapshot(project.githubRepoName, {
     maxFiles: 14,
@@ -710,8 +656,6 @@ export async function regenerateProjectDocsFromRepo(
     GDD_TEMPLATE,
     repoFiles,
     supportingDocs,
-    decisionsContext,
-    answeredDecisions,
     [
       "Distingue l'existant, le MVP jouable visé à court terme et la projection moyen terme.",
       "Le GDD doit rester cohérent avec les foundations déjà présentes dans le dépôt.",
@@ -724,8 +668,6 @@ export async function regenerateProjectDocsFromRepo(
     TECH_SPEC_TEMPLATE,
     repoFiles,
     supportingDocs,
-    decisionsContext,
-    answeredDecisions,
     [
       "Décris l'architecture réellement visible dans le dépôt avant de proposer les extensions nécessaires.",
       "Mentionne explicitement les zones incomplètes, duplications ou incohérences techniques à corriger.",
@@ -738,8 +680,6 @@ export async function regenerateProjectDocsFromRepo(
     BACKLOG_TEMPLATE,
     repoFiles,
     supportingDocs,
-    decisionsContext,
-    answeredDecisions,
     [
       "Le backlog doit couvrir l'ensemble du projet, mais prendre en compte les foundations déjà réalisées.",
       "Le résumé des dépendances doit faire apparaître explicitement des waves 1 et 2 déjà réalisées, puis les waves futures pertinentes.",

@@ -87,6 +87,14 @@ Réponds UNIQUEMENT avec le texte brut — aucun JSON, aucun titre, aucun commen
     const data = await response.json();
     const bio: string = (data.choices?.[0]?.message?.content ?? "").trim();
 
+    // Persist to DB so next page load uses the cache
+    if (slug && bio) {
+      const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "");
+      await updateAgentFields(safeSlug, { personality_bio: bio }).catch(() => {
+        // Non-blocking — cache miss is acceptable
+      });
+    }
+
     return NextResponse.json({ bio });
   } catch {
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

@@ -16,19 +16,18 @@ import DevPipelineView from "./DevPipelineView";
 interface PipelineViewProps {
   projectId: string;
   phase: ProjectPhase;
-  decisionsReady?: boolean;
 }
 
-export default function PipelineView({ projectId, phase, decisionsReady = true }: PipelineViewProps) {
+export default function PipelineView({ projectId, phase }: PipelineViewProps) {
   // Dev phase has its own dedicated view
   if (phase === "in-dev") {
     return <DevPipelineView projectId={projectId} />;
   }
 
-  return <ConceptPipelineView projectId={projectId} phase={phase} decisionsReady={decisionsReady} />;
+  return <ConceptPipelineView projectId={projectId} phase={phase} />;
 }
 
-function ConceptPipelineView({ projectId, phase, decisionsReady = true }: PipelineViewProps) {
+function ConceptPipelineView({ projectId, phase }: PipelineViewProps) {
   const [waves, setWaves] = useState<Wave[]>([]);
   const [progress, setProgress] = useState<Pipeline["progress"]>({
     total: 0,
@@ -145,8 +144,6 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
     released: "Pipeline Post-Launch",
   };
 
-  const conceptLocked = phase === "concept" && !decisionsReady;
-
   if (loading) {
     return (
       <div className="rounded-2xl border border-white/8 bg-white/2 backdrop-blur-md p-6 space-y-4 animate-pulse">
@@ -166,25 +163,12 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
       <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center space-y-4">
         <Zap className="w-8 h-8 text-white/20 mx-auto" />
         <div className="space-y-1">
-          <p className="text-sm text-white/40 font-medium">
-            {conceptLocked ? "Pipeline verrouillé" : "Pipeline non encore généré"}
-          </p>
+          <p className="text-sm text-white/40 font-medium">Pipeline non encore généré</p>
           <p className="text-xs text-white/25">
-            {conceptLocked
-              ? "Le cadrage avec Eve doit être validé avant de lancer la rédaction des 5 documents."
-              : "Le Producer va analyser le projet et créer les tâches automatiquement."}
+            Le Producer va analyser le projet et créer les tâches automatiquement.
           </p>
         </div>
-        {conceptLocked ? (
-          <Link
-            href={`/projects/${projectId}/decisions`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-500/15 border border-indigo-500/25 text-indigo-300 text-sm font-semibold hover:bg-indigo-500/25 transition-colors"
-          >
-            <Zap className="w-4 h-4" />
-            Ouvrir le cadrage Eve
-          </Link>
-        ) : (
-          <button
+        <button
             onClick={handleGenerate}
             disabled={generating}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-500/15 border border-violet-500/25 text-violet-300 text-sm font-semibold hover:bg-violet-500/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -196,7 +180,6 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
             )}
             {generating ? "Génération en cours…" : "Générer le pipeline"}
           </button>
-        )}
       </div>
     );
   }
@@ -208,8 +191,7 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white/90">{phaseLabel[phase]}</h3>
           <div className="flex items-center gap-2">
-            {!conceptLocked && (
-              <button
+            <button
                 onClick={handleRunAll}
                 disabled={runningAll || !!executingId}
                 className="flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 transition-colors px-2.5 py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -221,7 +203,6 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
                 )}
                 {runningAll ? "En cours…" : "Lancer tout"}
               </button>
-            )}
             <button
               onClick={load}
               disabled={runningAll}
@@ -251,10 +232,10 @@ function ConceptPipelineView({ projectId, phase, decisionsReady = true }: Pipeli
                 wave={wave}
                 defaultOpen={!wave.allCompleted}
                 executingId={executingId}
-                executionLocked={conceptLocked}
+                executionLocked={false}
                 onReview={setReviewTask}
-                onExecute={executingId || conceptLocked || runningAll ? undefined : handleExecute}
-                onRetry={executingId || conceptLocked || runningAll ? undefined : handleRetry}
+                onExecute={executingId || runningAll ? undefined : handleExecute}
+                onRetry={executingId || runningAll ? undefined : handleRetry}
               />
             </div>
           ))}

@@ -111,11 +111,11 @@ export default async function ProjectPage({
 
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <Link
-                href={`/projects/${project.id}/decisions`}
+                href={`/brainstorming/${project.id}`}
                 className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-sm font-medium text-indigo-300 transition-colors"
               >
                 <MessageCircle className="w-4 h-4" />
-                Décisions
+                Brainstorming
               </Link>
               {project.githubRepoUrl && (
                 <a
@@ -138,22 +138,7 @@ export default async function ProjectPage({
       <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 w-full">
         {/* Left column (Pipeline) */}
         <div className="lg:col-span-2 space-y-8">
-          {project.status === "concept" && !project.decisionsReady && (
-            <section className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-amber-200">Cadrage requis avant la rédaction</p>
-                  <p className="mt-1 text-amber-100/80">
-                    Les 5 documents de conception dépendent du cadrage avec Eve. Tant qu&apos;il n&apos;est pas validé,
-                    la génération du pipeline documentaire reste bloquée.
-                  </p>
-                </div>
-              </div>
-            </section>
-          )}
-
-          <PipelineView projectId={project.id} phase={project.status} decisionsReady={project.decisionsReady} />
+          <PipelineView projectId={project.id} phase={project.status} />
 
           <section className="bg-white/2 border border-white/8 backdrop-blur-md rounded-2xl p-6">
             <h3 className="text-sm font-bold text-white/60 mb-4">Informations Techniques</h3>

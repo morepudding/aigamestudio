@@ -27,40 +27,72 @@ const VARIANT_LABELS: Record<AssetVariant, string> = {
   4: "SO",
 };
 
-// ─── Direction suffixes injected into prompts ─────────────────────────────────
-const DIRECTION_SUFFIX: Record<AssetVariant, string> = {
-  1: "isometric view from north-west angle",
-  2: "isometric view from north-east angle, rotated 90 degrees clockwise",
-  3: "isometric view from south-east angle, seen from behind, rotated 180 degrees",
-  4: "isometric view from south-west angle, rotated 270 degrees clockwise",
-};
+const STYLE = "16-bit isometric pixel art, transparent background, no white background, no shadows outside object";
 
-// Instruction added when a reference image is provided (img2img)
-const IMG2IMG_PREFIX =
-  "Redraw the object in the reference image as isometric pixel art, 16-bit style, transparent background, no white background. Keep the same object, colors, and style.";
-
-// ─── Base prompts (variant 1 / NW view) ──────────────────────────────────────
-const BASE_PROMPTS: Record<OfficeAssetType, string> = {
-  studio_empty:
-    "isometric pixel art, brand-new empty indie game studio, bare concrete floor, exposed brick walls, large windows with morning light, no furniture, 16-bit style, transparent background, no white background",
-  desk_workstation:
-    "isometric pixel art, wooden office desk with computer monitor, keyboard and mouse, 16-bit style, transparent background, no white background",
-  chair_office:
-    "isometric pixel art, ergonomic office chair with wheels and soft dark fabric, 16-bit style, transparent background, no white background",
-  plant_green_1:
-    "isometric pixel art, potted green monstera plant with broad leaves, 16-bit style, transparent background, no white background",
-  plant_green_2:
-    "isometric pixel art, potted green snake plant with tall upright leaves, 16-bit style, transparent background, no white background",
-  plant_green_3:
-    "isometric pixel art, potted green fern plant with dense cascading leaves, 16-bit style, transparent background, no white background",
-  cabinet_storage:
-    "isometric pixel art, metal office storage cabinet with closed doors, 16-bit style, transparent background, no white background",
-  trash_can:
-    "isometric pixel art, small office trash bin, simple and clean, 16-bit style, transparent background, no white background",
-  water_fountain:
-    "isometric pixel art, office water cooler fountain with blue bottle, 16-bit style, transparent background, no white background",
-  coffee_machine:
-    "isometric pixel art, office coffee machine on compact stand, 16-bit style, transparent background, no white background",
+// ─── Per-asset per-angle prompts ──────────────────────────────────────────────
+// v1=NW (front-left face visible), v2=NE (front-right face visible),
+// v3=SE (back-right, seen from behind), v4=SW (back-left face visible)
+const PROMPTS: Record<OfficeAssetType, Record<AssetVariant, string>> = {
+  studio_empty: {
+    1: `${STYLE}, empty indie game studio interior, view from north-west: left wall and front wall visible, concrete floor, exposed brick`,
+    2: `${STYLE}, empty indie game studio interior, view from north-east: right wall and front wall visible, concrete floor, exposed brick`,
+    3: `${STYLE}, empty indie game studio interior, view from south-east: right wall and back wall visible, concrete floor, exposed brick`,
+    4: `${STYLE}, empty indie game studio interior, view from south-west: left wall and back wall visible, concrete floor, exposed brick`,
+  },
+  desk_workstation: {
+    1: `${STYLE}, wooden office desk with monitor facing viewer, keyboard on left side, mouse on right, view from north-west showing front-left of desk`,
+    2: `${STYLE}, wooden office desk with monitor facing away from viewer, keyboard on right side, view from north-east showing front-right of desk`,
+    3: `${STYLE}, wooden office desk seen from behind, back panel of monitor visible, cables visible, view from south-east`,
+    4: `${STYLE}, wooden office desk seen from back-left, underside of desk visible, legs prominent, view from south-west`,
+  },
+  chair_office: {
+    1: `${STYLE}, ergonomic office chair, dark fabric seat, view from north-west: front-left visible, seat cushion and armrest on left side prominent`,
+    2: `${STYLE}, ergonomic office chair, dark fabric seat, view from north-east: front-right visible, seat cushion and armrest on right side prominent`,
+    3: `${STYLE}, ergonomic office chair, dark fabric seat, view from south-east: backrest fully visible, back of headrest and lumbar support prominent`,
+    4: `${STYLE}, ergonomic office chair, dark fabric seat, view from south-west: backrest visible from left side, lumbar support and left rear leg prominent`,
+  },
+  plant_green_1: {
+    1: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-west: left leaves prominent`,
+    2: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-east: right leaves prominent`,
+    3: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-east: back leaves and stem visible`,
+    4: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-west: back-left leaves and pot base visible`,
+  },
+  plant_green_2: {
+    1: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-west`,
+    2: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-east`,
+    3: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-east: back of leaves visible`,
+    4: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-west: back-left angle`,
+  },
+  plant_green_3: {
+    1: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-west: left fronds drooping`,
+    2: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-east: right fronds drooping`,
+    3: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-east: back fronds visible`,
+    4: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-west: back-left fronds`,
+  },
+  cabinet_storage: {
+    1: `${STYLE}, metal office storage cabinet, closed doors with handle, view from north-west: front face and left side panel visible`,
+    2: `${STYLE}, metal office storage cabinet, closed doors with handle, view from north-east: front face and right side panel visible`,
+    3: `${STYLE}, metal office storage cabinet, view from south-east: back panel and right side visible, no handles`,
+    4: `${STYLE}, metal office storage cabinet, view from south-west: back panel and left side visible, no handles`,
+  },
+  trash_can: {
+    1: `${STYLE}, small office trash bin, round, open top, view from north-west: front-left visible`,
+    2: `${STYLE}, small office trash bin, round, open top, view from north-east: front-right visible`,
+    3: `${STYLE}, small office trash bin, round, open top, view from south-east: back-right visible`,
+    4: `${STYLE}, small office trash bin, round, open top, view from south-west: back-left visible`,
+  },
+  water_fountain: {
+    1: `${STYLE}, office water cooler with blue bottle on top, view from north-west: front-left, dispenser taps visible`,
+    2: `${STYLE}, office water cooler with blue bottle on top, view from north-east: front-right, dispenser taps visible`,
+    3: `${STYLE}, office water cooler with blue bottle on top, view from south-east: back-right panel, no taps`,
+    4: `${STYLE}, office water cooler with blue bottle on top, view from south-west: back-left panel, no taps`,
+  },
+  coffee_machine: {
+    1: `${STYLE}, office coffee machine, buttons and spout facing viewer, view from north-west: front-left, control panel and coffee spout prominent`,
+    2: `${STYLE}, office coffee machine, view from north-east: front-right, side of machine and buttons visible`,
+    3: `${STYLE}, office coffee machine, view from south-east: back of machine, ventilation grille visible`,
+    4: `${STYLE}, office coffee machine, view from south-west: back-left, power cable visible`,
+  },
 };
 
 const STORAGE_VERSION = "v3";
@@ -80,25 +112,12 @@ function storagePath(asset: OfficeAssetType, variant: AssetVariant): string {
 }
 
 // ─── Generate image via OpenRouter ───────────────────────────────────────────
-// When referenceUrl is provided, uses img2img (image in messages content).
-async function generateImage(
-  prompt: string,
-  referenceUrl?: string
-): Promise<ArrayBuffer> {
+async function generateImage(prompt: string): Promise<ArrayBuffer> {
   const apiKey =
     process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTE_SERVICE_API_KEY;
   if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY");
 
-  type ContentBlock =
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string } };
-
-  const content: ContentBlock[] = referenceUrl
-    ? [
-        { type: "text", text: prompt },
-        { type: "image_url", image_url: { url: referenceUrl } },
-      ]
-    : [{ type: "text", text: prompt }];
+  const content = [{ type: "text", text: prompt }];
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -234,9 +253,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const asset = searchParams.get("asset") as OfficeAssetType | null;
 
-  if (!asset || !(asset in BASE_PROMPTS)) {
+  if (!asset || !(asset in PROMPTS)) {
     return NextResponse.json(
-      { error: `Invalid asset. Must be one of: ${Object.keys(BASE_PROMPTS).join(", ")}` },
+      { error: `Invalid asset. Must be one of: ${Object.keys(PROMPTS).join(", ")}` },
       { status: 400 }
     );
   }
@@ -267,9 +286,9 @@ export async function POST(req: NextRequest) {
   const variant = (body?.variant ?? 1) as AssetVariant;
   const forceRegenerate = body?.force === true;
 
-  if (!asset || !(asset in BASE_PROMPTS)) {
+  if (!asset || !(asset in PROMPTS)) {
     return NextResponse.json(
-      { error: `Invalid asset. Must be one of: ${Object.keys(BASE_PROMPTS).join(", ")}` },
+      { error: `Invalid asset. Must be one of: ${Object.keys(PROMPTS).join(", ")}` },
       { status: 400 }
     );
   }
@@ -302,34 +321,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Resolve reference image for img2img (variants 2/3/4 use variant 1) ────
-  let referenceUrl: string | undefined;
-  let prompt: string;
+  // ── Generate — dedicated prompt per asset per angle ──────────────────────
+  const prompt = PROMPTS[asset][variant];
 
-  if (variant === 1) {
-    // Text-to-image for the base view
-    prompt = `${BASE_PROMPTS[asset]}, ${DIRECTION_SUFFIX[1]}`;
-  } else {
-    // img2img: fetch variant 1 URL if it exists in storage
-    const v1Path = storagePath(asset, 1);
-    const { data: v1Files } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .list("editor-assets", { search: `${asset}-v1-${STORAGE_VERSION}.png`, limit: 1 });
-
-    if (v1Files && v1Files.length > 0) {
-      const { data: v1UrlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(v1Path);
-      referenceUrl = v1UrlData.publicUrl;
-      prompt = `${IMG2IMG_PREFIX} ${DIRECTION_SUFFIX[variant]}`;
-    } else {
-      // Fallback to text-to-image if variant 1 not yet generated
-      prompt = `${BASE_PROMPTS[asset]}, ${DIRECTION_SUFFIX[variant]}`;
-    }
-  }
-
-  // ── Generate ──────────────────────────────────────────────────────────────
   let buffer: Buffer;
   try {
-    const ab = await generateImage(prompt, referenceUrl);
+    const ab = await generateImage(prompt);
     buffer = Buffer.from(ab);
   } catch (err) {
     console.error("[generate-office-asset] Generation failed:", (err as Error).message);

@@ -6,7 +6,7 @@ import { getFileContent } from "@/lib/services/githubService";
 import { getProjectById } from "@/lib/services/projectService";
 import { pushFile } from "@/lib/services/githubService";
 import { normalizeMarkdownDeliverable, unwrapCodeFence } from "@/lib/utils";
-import { areDecisionsReady } from "@/lib/services/decisionService";
+import { getSessionByProject } from "@/lib/services/brainstormingService";
 import { reviewWave, isWaveFullyCompleted } from "@/lib/services/waveReviewerService";
 import { getTasksByProject } from "@/lib/services/pipelineService";
 
@@ -33,10 +33,10 @@ export async function POST(
   }
 
   if (task.projectPhase === "concept") {
-    const decisionsReady = await areDecisionsReady(task.projectId);
-    if (!decisionsReady) {
+    const session = await getSessionByProject(task.projectId);
+    if (!session?.gddFinalized) {
       return NextResponse.json(
-        { error: "Le cadrage avec Eve doit être validé avant de rédiger les documents." },
+        { error: "Le GDD doit être finalisé via le brainstorming avant de générer les documents." },
         { status: 409 }
       );
     }
