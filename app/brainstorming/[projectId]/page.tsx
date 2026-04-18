@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Send, ChevronRight, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -192,14 +192,17 @@ function PhaseBar({
 export default function BrainstormingPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [project, setProject] = useState<Project | null>(null);
   const [session, setSession] = useState<BrainstormingSession | null>(null);
   const [messages, setMessages] = useState<BrainstormingMessage[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [agentsMap, setAgentsMap] = useState<Record<string, Agent>>({});
   const [loading, setLoading] = useState(true);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [startingSession, setStartingSession] = useState(false);
   const [synthesizing, setSynthesizing] = useState(false);
   const [readyForSynthesis, setReadyForSynthesis] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +218,7 @@ export default function BrainstormingPage() {
       fetch("/api/agents").then((r) => r.json()),
     ]).then(([proj, sessionData, agents]: [Project, ApiSessionResponse | null, Agent[]]) => {
       setProject(proj);
+      setAgents(agents ?? []);
       if (sessionData?.session) {
         setSession(sessionData.session);
         setMessages(sessionData.messages ?? []);
@@ -241,6 +245,58 @@ export default function BrainstormingPage() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [projectId, router]);
+
+  useEffect(() => {
+    if (loading || session || agents.length === 0) return;
+    if (searchParams.get("onboarding") !== "1") return;
+    startBrainstormingSession();
+    // Intentionally only reacts when initial onboarding conditions are met.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, session, agents.length, searchParams]);
+
+  function pickDefaultAgents(list: Agent[]): string[] {
+    const byDept = (dept: string) => list.find((a) => a.department === dept)?.slug;
+    const picks = [byDept("game-design"), byDept("programming"), byDept("art")]
+      .filter((slug): slug is string => Boolean(slug));
+
+    if (picks.length === 0 && list.length > 0) {
+      return list.slice(0, 3).map((a) => a.slug);
+    }
+
+    return Array.from(new Set(picks)).slice(0, 3);
+  }
+
+  async function startBrainstormingSession() {
+    if (startingSession || session) return;
+    setStartingSession(true);
+    setError(null);
+    try {
+      const agentSlugs = pickDefaultAgents(agents);
+      if (agentSlugs.length === 0) {
+        throw new Error("Aucun collaborateur disponible. Recrute des agents avant de démarrer le brainstorming.");
+      }
+
+      const res = await fetch(`/api/brainstorming/${projectId}/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentSlugs }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Impossible de démarrer le brainstorming");
+      }
+
+      const data: ApiSessionResponse = await res.json();
+      setSession(data.session);
+      setMessages(data.messages ?? []);
+      router.replace(`/brainstorming/${projectId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setStartingSession(false);
+    }
+  }
 
   // Auto-scroll
   useEffect(() => {
@@ -328,8 +384,34 @@ export default function BrainstormingPage() {
 
   if (!session) {
     return (
-      <div className="flex items-center justify-center h-screen text-muted-foreground text-sm">
-        Session introuvable. Retourne sur la page projet pour démarrer le brainstorming.
+      <div className="flex items-center justify-center h-screen px-6">
+        <div className="max-w-xl w-full rounded-2xl border border-white/10 bg-card/60 backdrop-blur-sm p-6 text-center space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
+            <Sparkles className="w-5 h-5 text-indigo-300" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-foreground">Démarrer le brainstorming</h2>
+            <p className="text-sm text-muted-foreground">
+              Aucune session n&apos;existe encore pour ce projet. Lance un brainstorming pour cadrer le scope et générer le GDD.
+            </p>
+          </div>
+          <button
+            onClick={startBrainstormingSession}
+            disabled={startingSession}
+            className="mx-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold transition-all disabled:opacity-50"
+          >
+            {startingSession ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Démarrage…</>
+            ) : (
+              <><Sparkles className="w-4 h-4" /> Lancer le brainstorming</>
+            )}
+          </button>
+          {error && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+        </div>
       </div>
     );
   }

@@ -456,8 +456,8 @@ export default function ProjectsPage() {
 
   function handleProjectCreated(project: Project) {
     setProjects((prev) => [...prev, project]);
-    setPendingProject(project);
-    setStep("pick-agents");
+    // Redirect to brainstorming onboarding so creation always continues to team setup.
+    router.push(`/brainstorming/${project.id}?onboarding=1`);
   }
 
   function handleBrainstormingStarted(agentSlugs: string[]) {
