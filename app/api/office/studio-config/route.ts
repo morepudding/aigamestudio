@@ -50,6 +50,10 @@ function getSupabaseAdmin() {
   return _supabaseAdmin;
 }
 
+// studio_settings is not in the generated Supabase types — use untyped client
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function db() { return getSupabaseAdmin() as any; }
+
 function parseJsonSafe<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try {
@@ -61,9 +65,7 @@ function parseJsonSafe<T>(raw: string | null | undefined, fallback: T): T {
 
 export async function GET() {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
-
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await db()
       .from("studio_settings")
       .select("key,value")
       .in("key", [OFFICE_DEFAULT_ASSETS_KEY, OFFICE_LAYOUT_KEY]);
@@ -72,7 +74,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = (data ?? []) as { key: string; value: string }[];
+    const rows: { key: string; value: string }[] = data ?? [];
     const defaultAssetsRaw = rows.find((row) => row.key === OFFICE_DEFAULT_ASSETS_KEY)?.value;
     const layoutRaw = rows.find((row) => row.key === OFFICE_LAYOUT_KEY)?.value;
 
@@ -89,14 +91,13 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json()) as Payload;
-    const supabaseAdmin = getSupabaseAdmin();
 
     if (body.kind === "default-asset") {
       if (!body.url || typeof body.url !== "string") {
         return NextResponse.json({ error: "Invalid asset URL" }, { status: 400 });
       }
 
-      const { data: existing, error: getError } = await supabaseAdmin
+      const { data: existing, error: getError } = await db()
         .from("studio_settings")
         .select("value")
         .eq("key", OFFICE_DEFAULT_ASSETS_KEY)
@@ -106,11 +107,11 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: getError.message }, { status: 500 });
       }
 
-      const existingRow = existing as { value: string } | null;
+      const existingRow: { value: string } | null = existing;
       const defaults = parseJsonSafe<Partial<Record<OfficeAssetType, string>>>(existingRow?.value, {});
       defaults[body.assetType] = body.url;
 
-      const { error: saveError } = await supabaseAdmin.from("studio_settings").upsert(
+      const { error: saveError } = await db().from("studio_settings").upsert(
         { key: OFFICE_DEFAULT_ASSETS_KEY, value: JSON.stringify(defaults), updated_at: new Date().toISOString() },
         { onConflict: "key" }
       );
@@ -127,7 +128,7 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "Invalid layout payload" }, { status: 400 });
       }
 
-      const { error: saveError } = await supabaseAdmin.from("studio_settings").upsert(
+      const { error: saveError } = await db().from("studio_settings").upsert(
         { key: OFFICE_LAYOUT_KEY, value: JSON.stringify(body.layout), updated_at: new Date().toISOString() },
         { onConflict: "key" }
       );
