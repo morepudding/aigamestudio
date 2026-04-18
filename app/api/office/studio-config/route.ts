@@ -72,7 +72,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const rows = data ?? [];
+    const rows = (data ?? []) as { key: string; value: string }[];
     const defaultAssetsRaw = rows.find((row) => row.key === OFFICE_DEFAULT_ASSETS_KEY)?.value;
     const layoutRaw = rows.find((row) => row.key === OFFICE_LAYOUT_KEY)?.value;
 
