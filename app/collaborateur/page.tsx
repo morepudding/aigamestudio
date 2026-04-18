@@ -75,22 +75,22 @@ export default function CollaborateurPage() {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-2">Collaborateurs</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">Collaborateurs</h1>
+          <p className="text-base text-muted-foreground">
             Gérez l&apos;équipe de votre studio et attribuez les rôles.
           </p>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <Link
             href="/collaborateur/galerie"
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 border border-white/10 text-white hover:bg-white/10 rounded-lg text-sm font-medium transition-colors"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-white/6 border border-white/12 text-white hover:bg-white/10 rounded-xl text-sm font-medium transition-colors"
           >
             <ImageIcon className="w-4 h-4" />
             Galerie photos
           </Link>
           <Link
             href="/collaborateur/recruter"
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg text-sm font-medium transition-colors shadow-lg shadow-primary/20"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-primary/25"
           >
             <UserPlus className="w-4 h-4" />
             Recruter un agent IA
@@ -98,31 +98,31 @@ export default function CollaborateurPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
         {/* Admin card */}
-        <div className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 hover:bg-white/10 transition-colors overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-50" />
-          <div className="flex items-start gap-3 md:gap-4 mb-4 md:mb-6">
-            <div className="w-12 h-12 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0 text-white font-bold text-lg">
+        <div className="group relative bg-card border border-white/12 rounded-2xl p-5 md:p-7 hover:bg-white/8 transition-colors overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-60" />
+          <div className="flex items-start gap-4 mb-5">
+            <div className="w-14 h-14 rounded-full bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shrink-0 text-white font-bold text-lg">
               RM
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">Romain</h3>
-              <p className="font-medium text-primary text-sm mb-1">Directeur de Studio</p>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Info className="w-3 h-3" />
+              <h3 className="text-xl font-bold text-white group-hover:text-primary transition-colors">Romain</h3>
+              <p className="font-medium text-primary text-sm mb-1">Producteur</p>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <Info className="w-3.5 h-3.5" />
                 <span>Admin</span>
               </div>
             </div>
           </div>
-          <div className="space-y-3 mt-4 pt-4 border-t border-white/5">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Département</span>
-              <span className="font-medium text-white px-2 py-0.5 rounded-full bg-white/10 text-xs">Direction</span>
+          <div className="space-y-3 mt-4 pt-4 border-t border-white/8">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Département</span>
+              <span className="font-medium text-white px-3 py-1 rounded-full bg-white/10 text-sm">Direction</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Projets actifs</span>
-              <span className="font-medium text-white">{activeProjectsCount}</span>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Cours actifs</span>
+              <span className="font-bold text-white text-base">{activeProjectsCount}</span>
             </div>
           </div>
         </div>
@@ -135,9 +135,9 @@ export default function CollaborateurPage() {
           return (
             <div
               key={agent.slug}
-              className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 md:p-6 hover:bg-white/10 transition-colors overflow-hidden"
+              className="group relative bg-card border border-white/12 rounded-2xl p-5 md:p-7 hover:bg-white/8 transition-colors overflow-hidden"
             >
-              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-50" />
+              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary to-transparent opacity-60" />
 
               {/* Delete button — hidden for system agents */}
               {!agent.is_system_agent && (

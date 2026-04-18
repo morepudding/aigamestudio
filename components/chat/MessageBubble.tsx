@@ -12,7 +12,6 @@ interface MessageBubbleProps {
   agentInitials: string;
   agentIconUrl?: string | null;
   gradient: string;
-  onOpenMomentVivant?: (messageId: string) => void;
 }
 
 function formatTime(ts: number): string {
@@ -51,7 +50,6 @@ export function MessageBubble({
   agentInitials,
   agentIconUrl,
   gradient,
-  onOpenMomentVivant,
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
   const ref = useRef<HTMLDivElement>(null);
@@ -146,15 +144,6 @@ export function MessageBubble({
             </span>
           )}
           {text}
-          {!isUser && message.messageType === "moment_vivant" && onOpenMomentVivant && (
-            <button
-              onClick={() => onOpenMomentVivant(message.id)}
-              className="mt-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-medium transition-colors border border-amber-500/20"
-            >
-              <Sparkles className="w-3 h-3" />
-              Ouvrir
-            </button>
-          )}
         </div>
         {/* Subtile: italic bandeau below bubble */}
         {!isUser && emotionType === "subtile" && emotion && (

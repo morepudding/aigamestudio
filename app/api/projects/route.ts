@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
     githubRepoName: null,
     active: true,
     decisionsReady: false,
+    courseInfo: null,
+    gddOriginal: null,
+    gddVivant: null,
   });
 
   if (!project) {

@@ -126,14 +126,14 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
           {/* Full-screen modal */}
           <motion.div
             key="modal"
-            className="fixed inset-4 z-50 flex flex-col bg-[#0d0d12] rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+            className="fixed inset-0 sm:inset-4 z-50 flex flex-col bg-[#0d0d12] sm:rounded-2xl border-0 sm:border border-white/10 shadow-2xl overflow-hidden"
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ type: "spring", stiffness: 300, damping: 28, mass: 0.8 }}
           >
             {/* ── Top bar ── */}
-            <div className="flex items-center justify-between gap-6 px-8 py-4 border-b border-white/8 shrink-0">
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-8 py-3 sm:py-4 border-b border-white/8 shrink-0">
               {/* Left – status + breadcrumb + title */}
               <div className="flex items-center gap-4 min-w-0">
                 {/* Badge */}
@@ -163,7 +163,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
                 )}
 
                 {/* Title */}
-                <h2 className="text-sm font-semibold text-white/80 truncate">
+                <h2 className="text-xs sm:text-sm font-semibold text-white/80 truncate">
                   {task.title}
                 </h2>
               </div>
@@ -196,7 +196,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
 
             {/* ── Scrollable document content ── */}
             <div className="flex-1 overflow-y-auto">
-              <div className="max-w-4xl mx-auto px-8 py-10">
+              <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
                 {deliverableContent ? (
                   (isMarkdownDeliverable || !["code", "json", "config", "repo-init"].includes(task.deliverableType ?? "")) ? (
                     <div className="prose prose-invert prose-base max-w-none
@@ -233,7 +233,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
 
             {/* ── Sticky action bar ── */}
             {isCompleted ? (
-              <div className="shrink-0 border-t border-white/8 bg-[#0d0d12] flex items-center justify-end px-8 py-4">
+              <div className="shrink-0 border-t border-white/8 bg-[#0d0d12] flex items-center justify-end px-4 sm:px-8 py-3 sm:py-4">
                 <button
                   onClick={onClose}
                   className="flex items-center gap-2 rounded-xl border border-white/12 bg-white/4 px-5 py-2.5 text-sm font-semibold text-white/60 hover:bg-white/8 hover:text-white/80 transition-colors"
@@ -252,11 +252,11 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="overflow-hidden px-8 pt-4"
+                    className="overflow-hidden px-4 sm:px-8 pt-3 sm:pt-4"
                   >
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-white/45">
-                        Feedback pour l'agent
+                      Feedback pour l&apos;agent
                       </label>
                       <textarea
                         value={feedback}
@@ -271,9 +271,9 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
                 )}
               </AnimatePresence>
 
-              <div className="flex items-center justify-between gap-4 px-8 py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-8 py-3 sm:py-4">
                 {/* Left – actions */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Delete deliverable */}
                 {!confirmDelete ? (
                   <button
@@ -282,7 +282,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
                     className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/4 px-3 py-2.5 text-sm font-semibold text-white/40 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Supprimer le livrable
+                    <span className="hidden sm:inline">Supprimer le livrable</span>
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -309,38 +309,39 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
                 <button
                   onClick={() => setShowFeedback((v) => !v)}
                   disabled={approving || rejecting || deleting}
-                  className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`flex items-center gap-2 rounded-xl border px-3 sm:px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                     showFeedback
                       ? "border-orange-500/35 bg-orange-500/12 text-orange-400 hover:bg-orange-500/20"
                       : "border-white/12 bg-white/4 text-white/60 hover:bg-white/8 hover:text-white/80"
                   }`}
                 >
                   <MessageSquarePlus className="w-4 h-4" />
-                  Feedback
+                  <span className="hidden sm:inline">Feedback</span>
                 </button>
               </div>
 
                 {/* Right – Submit actions */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 ml-auto">
                   {showFeedback && (
                     <button
                       onClick={handleReject}
                       disabled={rejecting || approving || !feedback.trim()}
-                      className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-5 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-3 sm:px-5 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {rejecting ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <XCircle className="w-4 h-4" />
                       )}
-                      Envoyer pour modification
+                      <span className="hidden sm:inline">Envoyer pour modification</span>
+                      <span className="sm:hidden">Rejeter</span>
                     </button>
                   )}
 
                   <button
                     onClick={handleApprove}
                     disabled={approving || rejecting}
-                    className="flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-6 py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
+                    className="flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 sm:px-6 py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/20"
                   >
                     {approving ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

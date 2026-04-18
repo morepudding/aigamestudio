@@ -29,22 +29,31 @@ export async function POST(req: NextRequest) {
   const role = agent.role ?? "";
   const gender = agent.gender ?? "";
   const genderWord = gender === "femme" ? "woman" : "man";
+  const genderPrompt = gender === "femme" ? "adult woman" : "adult man";
+  const antiWrongGenderPrompt =
+    gender === "femme"
+      ? "NOT male, NOT man, NOT beard, NOT moustache, NOT masculine face."
+      : "NOT female, NOT woman, NOT feminine face.";
 
   const portraitPrompt = [
-    `Hyperrealistic photographic portrait of a strikingly attractive ${genderWord}, 35mm DSLR photo, shot on Canon EOS R5.`,
+    `Photorealistic profile portrait of an ${genderPrompt}.`,
+    `Subject gender must be ${genderWord}.`,
     appearance ? `Appearance: ${appearance}.` : "",
     role ? `Works as ${role}.` : "",
-    "Beautiful symmetrical face, expressive eyes, flawless glowing skin, upper body shot, cinematic lighting, soft bokeh background, sharp focus, ultra-high detail, natural skin texture, professional fashion photography.",
-    "NOT ugly, NOT distorted face, NOT deformed, NOT anime, NOT cartoon, NOT illustration, NOT CGI, NOT 3D render, NOT painting.",
+    "Head and shoulders framing, realistic skin, natural lighting, dark neutral background, sharp eyes, subtle expression.",
+    antiWrongGenderPrompt,
+    "NOT anime, NOT cartoon, NOT illustration, NOT CGI, NOT 3D render, NOT painting, NOT deformed face.",
   ]
     .filter(Boolean)
     .join(" ");
 
   const iconPrompt = [
-    `Hyperrealistic photographic close-up portrait of a strikingly attractive ${genderWord}, shot on professional camera.`,
+    `Photorealistic close-up profile photo of an ${genderPrompt}.`,
+    `Subject gender must be ${genderWord}.`,
     appearance ? `Appearance: ${appearance}.` : "",
-    "Beautiful symmetrical face, flawless glowing skin, soft studio lighting, neutral background, profile picture style, ultra-sharp, natural skin texture.",
-    "NOT ugly, NOT distorted face, NOT deformed, NOT anime, NOT cartoon, NOT illustration, NOT CGI, NOT 3D render, NOT painting.",
+    "Tight face crop for avatar usage, natural lighting, clean neutral background, realistic skin texture.",
+    antiWrongGenderPrompt,
+    "NOT anime, NOT cartoon, NOT illustration, NOT CGI, NOT 3D render, NOT painting, NOT deformed face.",
   ]
     .filter(Boolean)
     .join(" ");

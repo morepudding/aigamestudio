@@ -6,7 +6,6 @@ import { Footer } from "@/components/footer";
 import { ChatPanelProvider } from "@/components/chat/ChatPanelProvider";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { ChatBubble } from "@/components/chat/ChatBubble";
-import { SpontaneousManager } from "@/components/chat/SpontaneousManager";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,10 +50,9 @@ export default function RootLayout({
         <ChatPanelProvider>
           <Sidebar />
           <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-            <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-4 pb-20 md:px-8 md:py-8 md:pb-8 lg:px-12 lg:py-12">{children}</main>
+            <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 pb-24 md:px-10 md:py-10 md:pb-10 lg:px-14 lg:py-14">{children}</main>
             <Footer />
           </div>
-          <SpontaneousManager />
           <ChatPanel />
           <ChatBubble />
         </ChatPanelProvider>

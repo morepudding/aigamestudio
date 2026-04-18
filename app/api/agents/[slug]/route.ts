@@ -31,7 +31,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt"] as const;
+  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt", "personality_bio", "gender"] as const;
 
   const updates: Record<string, unknown> = {};
   for (const key of allowedFields) {
@@ -58,6 +58,14 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid confidence_level" }, { status: 400 });
     }
     updates.confidence_level = cl;
+  }
+
+  // Validate gender if provided
+  if (updates.gender !== undefined) {
+    const validGenders = ["femme", "homme"];
+    if (!validGenders.includes(String(updates.gender))) {
+      return NextResponse.json({ error: "Invalid gender" }, { status: 400 });
+    }
   }
 
   if (Object.keys(updates).length === 0) {

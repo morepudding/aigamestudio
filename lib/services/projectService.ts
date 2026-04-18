@@ -17,6 +17,9 @@ type DbProject = {
   github_repo_name: string | null;
   active: boolean;
   decisions_ready: boolean;
+  course_info: import("@/lib/types/project").CourseInfo | null;
+  gdd_original: import("@/lib/types/contracts").GDDOriginal | null;
+  gdd_vivant: import("@/lib/types/contracts").GDDVivant | null;
 };
 
 function toProject(row: DbProject): Project {
@@ -37,6 +40,9 @@ function toProject(row: DbProject): Project {
     active: row.active,
     decisionsReady: row.decisions_ready,
     conceptDeliverables: staticProject?.conceptDeliverables,
+    courseInfo: row.course_info ?? staticProject?.courseInfo ?? null,
+    gddOriginal: row.gdd_original ?? null,
+    gddVivant: row.gdd_vivant ?? null,
   };
   // Only recompute status when the DB says "concept" — let "in-dev" and "released"
   // pass through so manual/automated transitions are not overridden.

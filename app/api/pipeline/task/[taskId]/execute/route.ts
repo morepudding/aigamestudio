@@ -7,6 +7,8 @@ import { getProjectById } from "@/lib/services/projectService";
 import { pushFile } from "@/lib/services/githubService";
 import { normalizeMarkdownDeliverable, unwrapCodeFence } from "@/lib/utils";
 import { areDecisionsReady } from "@/lib/services/decisionService";
+import { reviewWave, isWaveFullyCompleted } from "@/lib/services/waveReviewerService";
+import { getTasksByProject } from "@/lib/services/pipelineService";
 
 // POST /api/pipeline/task/[taskId]/execute
 // Executes a task: calls DeepSeek, saves content to DB.
@@ -120,11 +122,17 @@ export async function POST(
     }
 
     // Post-completion: advance pipeline and enrich next task
+    let waveReview = null;
     if (nextStatus === "completed") {
       if (task.projectPhase === "concept") {
         await enrichNextTaskPrompt(task.projectId, project);
       } else if (task.projectPhase === "in-dev") {
-        // Unlock dependent tasks that are now unblocked
+        // Check if the entire wave is now done — if so, run the reviewer before unlocking next wave
+        const allTasks = await getTasksByProject(task.projectId, "in-dev");
+        if (isWaveFullyCompleted(allTasks, task.waveNumber)) {
+          waveReview = await reviewWave(project, task.waveNumber);
+        }
+        // Unlock dependent tasks regardless of review result — review is informational for now
         await advancePipeline(task.projectId);
       }
     }
@@ -135,6 +143,7 @@ export async function POST(
       deliverablePath: task.deliverablePath,
       tokensUsed,
       durationMs,
+      waveReview,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);

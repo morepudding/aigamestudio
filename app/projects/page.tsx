@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, X, Loader2, Users, ChevronRight, Sparkles } from "lucide-react";
+import { Plus, X, Loader2, Users, ChevronRight, Sparkles, GraduationCap, Gamepad2, BookOpen } from "lucide-react";
 import { Project, ProjectStatus } from "@/lib/types/project";
 import type { Agent } from "@/lib/services/agentService";
 
@@ -36,44 +36,73 @@ function statusBadgeClass(status: ProjectStatus) {
   }
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function CourseCard({ project }: { project: Project }) {
+  const { courseInfo } = project;
+  const mechanics = courseInfo?.mechanics ?? [];
+
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group rounded-2xl bg-card border border-white/8 overflow-hidden hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 block"
+      className="group rounded-2xl bg-card border border-white/8 overflow-hidden hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5 transition-all duration-300 block"
     >
-      <div className={`h-36 bg-linear-to-br ${project.coverGradient} relative`}>
-        <div className="absolute inset-0 bg-linear-to-t from-card/70 to-transparent" />
+      {/* Cover */}
+      <div className={`h-32 bg-linear-to-br ${project.coverGradient} relative flex items-end p-3`}>
+        <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent" />
+        {courseInfo && (
+          <span className="relative z-10 text-xs font-semibold text-emerald-300 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-md backdrop-blur-sm">
+            {courseInfo.vnModule}
+          </span>
+        )}
+        <div className="absolute top-3 right-3">
+          <div className="w-8 h-8 rounded-lg bg-black/30 backdrop-blur-sm flex items-center justify-center">
+            <Gamepad2 className="w-4 h-4 text-white/60" />
+          </div>
+        </div>
       </div>
+
       <div className="p-4">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-bold text-base text-foreground group-hover:text-primary transition-colors leading-tight">
+        {/* Titre + statut */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="font-bold text-base text-foreground group-hover:text-emerald-300 transition-colors leading-tight">
             {project.title}
           </h3>
           <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full border ${statusBadgeClass(project.status)}`}>
             {statusLabels[project.status]}
           </span>
         </div>
-        <p className="text-xs text-muted-foreground line-clamp-2 mb-4 leading-relaxed">
-          {project.description}
-        </p>
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {project.tags.map((tag) => (
-            <span key={tag} className="text-xs px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
-              {tag}
-            </span>
-          ))}
-        </div>
+
+        {/* Nom du cours */}
+        {courseInfo ? (
+          <div className="flex items-center gap-1.5 mb-3">
+            <GraduationCap className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span className="text-xs text-emerald-400 font-medium">{courseInfo.courseName}</span>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
+            {project.description}
+          </p>
+        )}
+
+        {/* Mécaniques */}
+        {mechanics.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {mechanics.map((m) => (
+              <span key={m} className="text-xs px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-muted-foreground">
+                {m}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Footer */}
         <div className="border-t border-white/8 pt-3 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <span className="w-1 h-1 rounded-full bg-muted-foreground/60" />
+            <BookOpen className="w-3 h-3" />
             {project.genre}
           </div>
-          <span>{project.platforms.join(", ")}</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>{project.engine}</span>
-          <span>{project.team.length === 1 ? `Solo — ${project.team[0]}` : `${project.team.length} pers.`}</span>
+          <span className="font-medium text-white/40">
+            {courseInfo?.webEngine ? courseInfo.webEngine.toUpperCase() : project.engine}
+          </span>
         </div>
       </div>
     </Link>
@@ -145,26 +174,26 @@ function NewProjectModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-card border border-white/10 rounded-2xl shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full sm:max-w-md bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[95dvh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
           <div>
-            <h2 className="font-bold text-lg">Nouveau projet</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Tu pourras affiner le scope avec ton équipe ensuite</p>
+            <h2 className="font-bold text-lg">Nouveau cours</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Un cours = un mini-jeu web pour l&apos;Université d&apos;Espions</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/8 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Titre du jeu *</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Titre du mini-jeu *</label>
             <input
               required
               value={form.title}
               onChange={(e) => set("title", e.target.value)}
-              placeholder="Ex : First Light"
+              placeholder="Ex : Cryptographie 101"
               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
             />
           </div>
@@ -175,7 +204,7 @@ function NewProjectModal({
               value={form.description}
               onChange={(e) => set("description", e.target.value)}
               rows={3}
-              placeholder="Une idée en quelques mots… le reste se définira pendant le brainstorming"
+              placeholder="Décris le cours espion et la mécanique web… le reste se définira pendant le brainstorming"
               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 resize-none"
             />
           </div>
@@ -290,8 +319,8 @@ function CollaboratorPickerModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-card border border-white/10 rounded-2xl shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92dvh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
           <div>
             <h2 className="font-bold text-lg">Équipe de brainstorming</h2>
@@ -304,7 +333,7 @@ function CollaboratorPickerModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 max-h-[60vh] sm:max-h-[55vh]">
           {/* Selected count indicator */}
           <div className="flex items-center gap-2 text-xs">
             <div className="flex gap-1">
@@ -437,13 +466,16 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="px-6 py-12">
+    <div className="px-4 sm:px-6 py-8 sm:py-12">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-10 flex items-center justify-between">
+        <div className="mb-8 sm:mb-10 flex items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-extrabold text-foreground tracking-tight mb-2">Nos projets</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <GraduationCap className="w-5 h-5 text-emerald-400" />
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">Catalogue des Cours</h1>
+            </div>
             <p className="text-muted-foreground">
-              {projects.length} jeu{projects.length > 1 ? "x" : ""} en cours ou planifié{projects.length > 1 ? "s" : ""}
+              {projects.length} cours — mini-jeux web de l&apos;Université d&apos;Espions
             </p>
           </div>
           <button
@@ -451,7 +483,7 @@ export default function ProjectsPage() {
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold transition-all shadow-lg shadow-primary/20"
           >
             <Plus className="w-4 h-4" />
-            Nouveau projet
+            Nouveau cours
           </button>
         </div>
 
@@ -481,7 +513,7 @@ export default function ProjectsPage() {
                         <p className="text-xs text-muted-foreground/50">Aucun projet ici</p>
                       </div>
                     ) : (
-                      col.map((project) => <ProjectCard key={project.id} project={project} />)
+                      col.map((project) => <CourseCard key={project.id} project={project} />)
                     )}
                   </div>
                 </div>

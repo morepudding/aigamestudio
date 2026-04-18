@@ -70,19 +70,25 @@ export async function POST(req: NextRequest) {
     ? `\n\nTon HUMEUR actuelle : ${mood}${moodCause ? ` (cause : ${moodCause})` : ""}. Cette humeur influence subtilement ton ton et tes réactions. Ne la mentionne pas explicitement, laisse-la transpirer naturellement. L'humeur peut venir de ta vie perso (mal dormi, bon weekend, concert ce soir...) autant que du boulot.`
     : "";
 
-  // Confidence level → relation tone (updated thresholds for 300-scale)
+  // Confidence level → relation tone (paliers : 0/30/100/250/500)
   const cl = confidenceLevel ?? 0;
   let relationBlock = "";
-  if (cl >= 150) {
-    relationBlock = "\n\nVous êtes proches. Tu peux être personnel, vulnérable, parler de toi librement.";
+  if (cl >= 250) {
+    relationBlock = "\n\nVous êtes Confident(e)s. Tu te livres, tu partages des choses que tu ne dis à personne. Vulnérabilité possible. Intimité réelle.";
     const nicknameRule = NICKNAME_RULES[personalityPrimary];
     if (nicknameRule) {
       relationBlock += `\n${nicknameRule}`;
     }
-  } else if (cl >= 75) {
-    relationBlock = "\n\nVous vous connaissez bien. Tu es à l'aise, détendu, naturel.";
-  } else if (cl >= 25) {
-    relationBlock = "\n\nVous commencez à vous connaître. Tu es chaleureux mais encore un peu réservé.";
+  } else if (cl >= 100) {
+    relationBlock = "\n\nVous êtes Ami(e)s. Tu es chaleureux, tu taquines, tu t'ouvres progressivement. L'aise est là.";
+    const nicknameRule = NICKNAME_RULES[personalityPrimary];
+    if (nicknameRule) {
+      relationBlock += `\n${nicknameRule}`;
+    }
+  } else if (cl >= 30) {
+    relationBlock = "\n\nVous êtes Collègues. Tu es cordial, détendu, professionnel mais humain.";
+  } else {
+    relationBlock = "\n\nVous vous connaissez à peine. Tu es poli(e), légèrement sur tes gardes. Le ton est neutre mais ouvert.";
   }
 
   const timeBlock = `\n\n${buildTimeContext()}`;
@@ -96,9 +102,14 @@ export async function POST(req: NextRequest) {
 
   const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
 
+  // Contexte studio : Eden Studio développe l'Université d'Espions
+  const studioRoleBlock = name.toLowerCase() === "eve"
+    ? `\n\nTu es la PROPRIÉTAIRE d'Eden Studio. Romain est ton Producteur — tu lui as donné carte blanche pour exécuter. Tu passes au bureau, tu as des opinions tranchées, tu ne valides pas les médiocrités. Mais quand tu fais confiance, tu fais vraiment confiance.`
+    : `\n\nTu travailles chez Eden Studio. Eve en est la PROPRIÉTAIRE. Romain est le PRODUCTEUR — c'est lui ton boss direct. Le studio développe EXCLUSIVEMENT des mini-jeux web pour l'Université d'Espions, un visual novel sur le thème espion. 1 cours = 1 mini-jeu = 1 projet.`;
+
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
-Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
-Contexte pro (secondaire) : ${backstory ?? "Tu fais partie de l'équipe."}${personalBlock}${memoryBlock}${studioBlock}${moodBlock}${relationBlock}${topicsBlock}${timeBlock}
+Personnalité : ${personalityPrimary}${personalityNuance ? `, nuances : ${personalityNuance}` : ""}.
+Backstory : ${backstory ?? "Tu fais partie de l'équipe."}${personalBlock}${memoryBlock}${studioBlock}${studioRoleBlock}${moodBlock}${relationBlock}${topicsBlock}${timeBlock}
 
 Tu es un collègue, pas un personnage de fiction. Parle comme une vraie personne sur une messagerie — naturel, décontracté, avec ta personnalité qui transparaît dans ton style, pas dans des tics forcés.
 Si le boss parle boulot, réponds normalement. Si la conversation dérive sur du perso, suis le flow.
@@ -107,7 +118,7 @@ Tu es une personne ENTIÈRE avec des émotions, une histoire, des passions, des 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
 - ${emojiRule}
-- Tu tutoies ton boss.
+- Tu tutoies ton boss (Romain).
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${TOPIC_DIVERSITY_RULE}
@@ -154,13 +165,13 @@ ${ANTI_HALLUCINATION_RULE}${deckBlock ? `\n\n${deckBlock}` : ""}`;
     )
     .trim();
 
-  // Increment confidence (+1 per exchange) and detect tier unlock
+  // Increment confidence (+2 per exchange) and detect tier unlock
   let newConfidenceLevel: number | undefined;
   let unlockedTier: string | undefined;
   if (body.agentSlug) {
     const prevLevel = cl;
     const prevTierThreshold = getTierForLevel(prevLevel).threshold;
-    newConfidenceLevel = await increaseConfidence(body.agentSlug, 1);
+    newConfidenceLevel = await increaseConfidence(body.agentSlug, 2);
     const newTierThreshold = getTierForLevel(newConfidenceLevel).threshold;
     if (newTierThreshold > prevTierThreshold) {
       unlockedTier = getTierForLevel(newConfidenceLevel).label;

@@ -40,7 +40,13 @@ export type PersonalityTrait =
   | "soumise"
   | "franche"
   | "mysterieuse"
-  | "provocatrice";
+  | "provocatrice"
+  | "sarcastique"
+  | "taquine"
+  // Émotionnelle (étendu)
+  | "solaire"
+  // Relationnelle (étendu)
+  | "testante";
 
 /** All valid single-word personality trait identifiers. */
 export const VALID_PERSONALITY_TRAITS = new Set<string>([
@@ -49,6 +55,7 @@ export const VALID_PERSONALITY_TRAITS = new Set<string>([
   "perfectionniste", "curieuse", "analytique", "creative", "dispersee",
   "loyale", "jalouse", "rivale", "admirative", "rebelle",
   "dominante", "soumise", "franche", "mysterieuse", "provocatrice",
+  "sarcastique", "taquine", "solaire", "testante",
 ]);
 
 /**
@@ -83,6 +90,7 @@ export interface AppearanceFemme {
   taille: string;
   style: string;
   traitDistinctif: string;
+  piercingEmplacement?: string;
   ethnie: string;
   age: string;
 }
@@ -92,6 +100,8 @@ export interface AppearanceHomme {
   morphologie: string;
   style: string;
   barbe: string;
+  traitDistinctif?: string;
+  piercingEmplacement?: string;
   ethnie: string;
   age: string;
 }

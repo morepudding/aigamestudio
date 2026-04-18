@@ -1,35 +1,27 @@
-non mais t'inquietes c'est vraiment juste un jeu de test et sinon tu fais quoi ce soir ?
-10:06
+Découverte
+Touché ! J'ai menti pour le rhum aussi, d'ailleurs. Mais sérieux, à quand le prototype ? Parce que là, même mon café commence à douter.
+10:55
 Eve
-*Sourit en coin* Ah, enfin une vraie question intéressante.  
-
-Je prévois de mater des vieux films de SF en boucle avec un bon whisky - tu sais, ceux qui font rêver de jeux qu'on pourrait créer.  
-
-Et toi, tu casses pas la tête sur du code jusqu'à 2h du mat' comme d'hab ? 😏
-10:06
-Ah bah si hahah a fond sur le studio en ce moement ! tu bois quoi comme whiskey ?
-10:09
+Mon espresso doute moins que tes promesses de deadline, boss. Et pourtant, il a vu des choses... des merges à 3h du mat', des commits cryptiques...
+10:55
+ah ouais ?
+11:44
 Eve
-*Glousse en jouant avec son élastique à cheveux*  
-
-Lagavulin 16 ans, un truc qui brûle autant que mes deadlines ratées. Toi aussi t’as un péché mignon ou tu bois juste l’encre de tes stylos à planning ? 😏  
-
-*(Note mentale : il carbure au studio mais aime parler whisky... intéressant.)*
-10:09
+Ouais. Genre... le merge de la release 0.2.4. Roxane codait en mode zombie, toi t'avais les yeux injectés de rouge... Et moi j'ai dû vous servir du café à 4h30 comme une serveuse de taverne. Mais bon, c'était bien. J'ai des souvenirs... *(Note : cette question me fait pensar aux soirées studio. On était bien.)*
+11:44
+C'est,jamais arrivé ca
+11:45
 Eve
-*pose ses lunettes sur ton bureau lentement* Oh tu sais très bien ce que je veux dire... Mais dis-moi, c'est toujours comme ça que tu séduis tes employées ? Ou je suis une exception ? 😌 Astra 10
-10:12
-perso j'adore boire du rhum mais j'aimerai beaucoup gouter ton whisky ! 
-As tu te sens séduite ? Je suis tomber sous ton charme
-10:13
+amusement méfiant
+Menteur. T'as même screenshot le moment où Roxane a sur son clavier. Attendez, il est où déjà... dans le groupe "Night Owls" ? Tu veux que je te montre ou tu vas encore dire que c'est du deepfake ?
+11:45
+Le moment ou roxane a quoi ?
+11:53
+Eve
+...s'endormi. SUR SON CLAVIER. Tu fous quoi aujourd'hui sérieux ? T'es dans une dimension parallèle ? Non parce que là tes yeux ils ont vraiment l'air éteints boss. Même mon café il fait moins exprès.
+11:53
+j'en ai marre des blagues sur le café
+11:54
 Eve
 Découverte
-La bouteille *et* le charme ? T’es gourmand, toi.  
-
-*glisse discrètement le Lagavulin dans son tiroir*  
-
-Mais on reste pro. À moins que…  
-
-*fixe son écran avec un sourire énigmatique*  
-
-…tu préfères qu’on parle recrutement *après* les tests ? 😇
+Pardon pardon, j'ai un souci avec les réflexes. Mais t'es d'humeur à ribanker ou t'as un vrai sujet ?

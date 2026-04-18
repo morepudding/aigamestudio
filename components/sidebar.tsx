@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, FolderGit2, Users, MessageCircle, Settings2, Heart, Sparkles, Bot } from "lucide-react";
+import { Home, GraduationCap, Users, MessageCircle, Settings2, Heart, Sparkles, Bot } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -29,16 +29,16 @@ const moodHints: Record<string, { hint: string; intensity: "low" | "medium" | "h
 
 const navLinks = [
   { href: "/", label: "Accueil", icon: Home },
-  { href: "/projects", label: "Projets", icon: FolderGit2 },
+  { href: "/projects", label: "Cours", icon: GraduationCap },
   { href: "/collaborateur", label: "Collaborateurs", icon: Users },
   { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/pilotage", label: "Contexte", icon: Settings2 },
   { href: "/eve", label: "Eve Workshop", icon: Bot },
 ];
 
-// Mobile bottom nav: prioritize relational, de-prioritize projects
+// Mobile bottom nav
 const mobileNavLinks = [
-  { href: "/", label: "Accueil", icon: Home },
+  { href: "/", label: "Home", icon: Home },
+  { href: "/projects", label: "Cours", icon: GraduationCap },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/collaborateur", label: "Équipe", icon: Users },
   { href: "/eve", label: "Eve", icon: Bot },
@@ -120,20 +120,20 @@ export function Sidebar() {
   return (
     <>
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden md:flex w-64 border-r border-white/10 bg-background/50 backdrop-blur-xl h-screen sticky top-0 flex-col px-4 py-6 shadow-[1px_0_40px_rgba(0,0,0,0.5)] z-50">
-        <div className="flex items-center gap-3 mb-10 px-2 group cursor-pointer">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary/50 flex flex-shrink-0 items-center justify-center shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform">
-            <span className="font-bold text-background text-sm">E</span>
+      <aside className="hidden md:flex w-72 border-r border-white/10 bg-card/80 backdrop-blur-xl h-screen sticky top-0 flex-col px-5 py-8 shadow-[1px_0_60px_rgba(0,0,0,0.4)] z-50">
+        <div className="flex items-center gap-3 mb-12 px-2 group cursor-pointer">
+          <div className="w-10 h-10 rounded-xl bg-linear-to-br from-primary to-primary/50 flex shrink-0 items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-105 transition-transform">
+            <span className="font-bold text-white text-base">E</span>
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-white group-hover:text-primary transition-colors leading-tight">
+            <h1 className="text-2xl font-bold tracking-tight text-white group-hover:text-primary transition-colors leading-tight">
               Eden
             </h1>
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-primary/80">Studio</p>
+            <p className="text-xs uppercase tracking-widest font-semibold text-primary/70">Studio</p>
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1.5">
+        <nav className="flex-1 space-y-1">
           {navLinks.map((link) => {
             const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
             const Icon = link.icon;
@@ -143,26 +143,26 @@ export function Sidebar() {
               <div key={link.href}>
                 <Link
                   href={link.href}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group relative overflow-hidden ${
+                  className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-base font-medium transition-all group relative overflow-hidden ${
                     isActive
-                      ? "text-primary bg-primary/10"
-                      : "text-muted-foreground hover:text-white hover:bg-white/5"
+                      ? "text-primary bg-primary/12"
+                      : "text-muted-foreground hover:text-white hover:bg-white/6"
                   }`}
                 >
                   {isActive && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
                   )}
-                  <Icon className={`w-4 h-4 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-white"} transition-colors relative z-10`} />
+                  <Icon className={`w-5 h-5 ${isActive ? "text-primary" : "text-muted-foreground group-hover:text-white"} transition-colors relative z-10`} />
                   <span className="relative z-10 flex-1">{link.label}</span>
                   {isChatWithNotif && (
                     <div className="relative z-10 flex items-center gap-1.5">
                       {notification.intensity === "high" ? (
-                        <Heart className="w-3 h-3 text-rose-400 animate-heartbeat" />
+                        <Heart className="w-3.5 h-3.5 text-rose-400 animate-heartbeat" />
                       ) : notification.intensity === "medium" ? (
-                        <Sparkles className="w-3 h-3 text-amber-400 animate-pulse" />
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                       ) : null}
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center shadow-lg animate-in zoom-in duration-300 ${
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full min-w-[22px] text-center shadow-lg animate-in zoom-in duration-300 ${
                           notification.intensity === "high"
                             ? "bg-rose-500/20 text-rose-300 shadow-rose-500/20 border border-rose-500/30"
                             : notification.intensity === "medium"
@@ -175,21 +175,19 @@ export function Sidebar() {
                     </div>
                   )}
                 </Link>
-
-
               </div>
             );
           })}
         </nav>
 
-        <div className="mt-auto border-t border-white/10 pt-4">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all hover:bg-white/5 cursor-pointer text-muted-foreground hover:text-white">
-            <div className="w-8 h-8 rounded-full bg-white/10 flex flex-shrink-0 items-center justify-center overflow-hidden">
-               <span className="text-xs font-bold text-white">RM</span>
+        <div className="mt-auto border-t border-white/10 pt-5">
+          <div className="flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all hover:bg-white/6 cursor-pointer text-muted-foreground hover:text-white">
+            <div className="w-9 h-9 rounded-full bg-white/12 flex flex-shrink-0 items-center justify-center overflow-hidden">
+               <span className="text-sm font-bold text-white">RM</span>
             </div>
             <div className="flex-1 overflow-hidden">
-               <p className="text-sm font-medium text-white truncate">Romain</p>
-               <p className="text-xs text-muted-foreground truncate">Admin</p>
+               <p className="text-base font-medium text-white truncate">Romain</p>
+               <p className="text-sm text-muted-foreground truncate">Producteur</p>
             </div>
             <Settings2 className="w-4 h-4 opacity-50 hover:opacity-100 transition-opacity flex-shrink-0" />
           </div>
@@ -208,7 +206,7 @@ export function Sidebar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex flex-col items-center justify-center gap-1 min-w-[56px] py-2 rounded-xl transition-colors ${
+                className={`flex flex-col items-center justify-center gap-1 flex-1 py-2 rounded-xl transition-colors ${
                   isActive
                     ? "text-primary"
                     : "text-muted-foreground active:text-white"

@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { X, MessageCircle, ArrowLeft, Sparkles, Loader2 } from "lucide-react";
+import { X, MessageCircle, ArrowLeft } from "lucide-react";
 import { useChatPanel } from "./ChatPanelProvider";
 import { ChatInput } from "./ChatInput";
 import { MessageBubble, DateSeparator } from "./MessageBubble";
-import { MomentVivantChat } from "./MomentVivantChat";
-import type { MomentVivantScenario } from "@/lib/types/momentVivant";
 import { Conversation, Message } from "@/lib/types/chat";
 import {
   initConversation,
@@ -78,10 +76,7 @@ export function ChatPanel() {
   const [agentMemories, setAgentMemories] = useState<string>("");
   const [personalMems, setPersonalMems] = useState<string>("");
   const [recentTopics, setRecentTopics] = useState<string>("");
-  const [activeMoment, setActiveMoment] = useState<MomentVivantScenario | null>(null);
   const [tierUnlock, setTierUnlock] = useState<{ tierLabel: string; newLevel: number } | null>(null);
-  const [momentTriggering, setMomentTriggering] = useState(false);
-  const [momentCooldownUntil, setMomentCooldownUntil] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevSlugRef = useRef<string | null>(null);
 
@@ -106,11 +101,6 @@ export function ChatPanel() {
     }
     loadHub();
   }, [isOpen, activeAgentSlug]);
-
-  // Reset moment vivant when agent changes
-  useEffect(() => {
-    setActiveMoment(null);
-  }, [activeAgentSlug]);
 
   // Load agent + conversation when panel opens
   useEffect(() => {
@@ -156,15 +146,22 @@ export function ChatPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeAgentSlug]);
 
-  // Realtime subscription
+  // Realtime subscription — scoped to the current conversation ID
   useEffect(() => {
-    if (!activeAgentSlug || !isOpen) return;
+    if (!activeAgentSlug || !isOpen || !conversation?.id) return;
+
+    const conversationId = conversation.id;
 
     const channel = supabase
-      .channel(`panel-messages-${activeAgentSlug}`)
+      .channel(`panel-messages-${conversationId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
         (payload) => {
           const row = payload.new as {
             id: string;
@@ -176,7 +173,7 @@ export function ChatPanel() {
           };
 
           setConversation((prev) => {
-            if (!prev || prev.id !== row.conversation_id) return prev;
+            if (!prev || prev.id !== conversationId) return prev;
             if (prev.messages.some((m) => m.id === row.id)) return prev;
             return {
               ...prev,
@@ -202,7 +199,7 @@ export function ChatPanel() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeAgentSlug, isOpen]);
+  }, [activeAgentSlug, isOpen, conversation?.id]);
 
   // Auto-scroll
   useEffect(() => {
@@ -213,10 +210,14 @@ export function ChatPanel() {
     async (content: string) => {
       if (!agent || !conversation) return;
 
-      const userMsg = await sendMessage(conversation.id, content, "user");
+      // Capture identifiers at call time to guard against agent switching mid-request
+      const agentSlugAtSend = agent.slug;
+      const conversationIdAtSend = conversation.id;
+
+      const userMsg = await sendMessage(conversationIdAtSend, content, "user");
       if (userMsg) {
         setConversation((prev) => {
-          if (!prev) return prev;
+          if (!prev || prev.id !== conversationIdAtSend) return prev;
           if (prev.messages.some((m) => m.id === userMsg.id)) return prev;
           return {
             ...prev,
@@ -276,20 +277,29 @@ export function ChatPanel() {
         }
       }
 
-      const agentMsg = await sendMessage(
-        conversation.id,
-        reply,
-        "agent",
-        isDiscoveryTurn ? "discovery" : "normal"
-      );
+      const replyParts = reply.split("|||").map((p: string) => p.trim()).filter(Boolean);
+      const messageType = isDiscoveryTurn ? "discovery" : "normal";
+
       setIsTyping(false);
 
-      if (agentMsg) {
-        setConversation((prev) => {
-          if (!prev) return prev;
-          if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
-          return { ...prev, messages: [...prev.messages, agentMsg] };
-        });
+      for (let i = 0; i < replyParts.length; i++) {
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 600 + Math.random() * 800));
+        }
+        const agentMsg = await sendMessage(
+          conversationIdAtSend,
+          replyParts[i],
+          "agent",
+          messageType as "normal" | "discovery",
+          i > 0
+        );
+        if (agentMsg) {
+          setConversation((prev) => {
+            if (!prev || prev.id !== conversationIdAtSend) return prev;
+            if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
+            return { ...prev, messages: [...prev.messages, agentMsg] };
+          });
+        }
       }
 
       // Memory extraction every 5 user messages
@@ -304,16 +314,19 @@ export function ChatPanel() {
             if (newMemories.length > 0) {
               await saveAgentMemories(
                 newMemories.map((m) => ({
-                  agent_slug: agent.slug,
+                  agent_slug: agentSlugAtSend,
                   memory_type: m.type as MemoryType,
                   content: m.content,
-                  source_conversation_id: conversation.id,
+                  source_conversation_id: conversationIdAtSend,
                 }))
               );
-              const updated = await getAgentMemories(agent.slug);
-              setAgentMemories(formatMemoriesForPrompt(updated));
-              setPersonalMems(formatPersonalMemories(updated));
-              setRecentTopics(formatRecentTopics(updated));
+              // Only refresh memories if still on the same agent
+              if (agentSlugAtSend === agent.slug) {
+                const updated = await getAgentMemories(agentSlugAtSend);
+                setAgentMemories(formatMemoriesForPrompt(updated));
+                setPersonalMems(formatPersonalMemories(updated));
+                setRecentTopics(formatRecentTopics(updated));
+              }
             }
           }
         );
@@ -322,70 +335,6 @@ export function ChatPanel() {
     [agent, conversation, agentMemories, personalMems, recentTopics]
   );
 
-  const handleTriggerMoment = useCallback(async () => {
-    if (!agent || momentTriggering) return;
-    setMomentTriggering(true);
-    try {
-      const triggerRes = await fetch(`/api/moment-vivant/${agent.slug}/trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force: true }),
-      });
-      const triggerData = await triggerRes.json() as {
-        ok?: boolean;
-        skipped?: string;
-        messageId?: string;
-      };
-      if (triggerData.ok && triggerData.messageId) {
-        const { supabase: sb } = await import("@/lib/supabase/client");
-        const { data: msgRow } = await sb
-          .from("messages")
-          .select("*")
-          .eq("id", triggerData.messageId)
-          .single();
-        if (msgRow) {
-          const newMsg = {
-            id: msgRow.id as string,
-            conversationId: msgRow.conversation_id as string,
-            sender: msgRow.sender as "user" | "agent",
-            content: msgRow.content as string,
-            timestamp: msgRow.timestamp as number,
-            messageType: msgRow.message_type as "normal" | "discovery" | "moment_vivant",
-          };
-          setConversation((prev) => {
-            if (!prev) return prev;
-            if (prev.messages.some((m) => m.id === newMsg.id)) return prev;
-            return { ...prev, messages: [...prev.messages, newMsg] };
-          });
-          // Cooldown 20h
-          setMomentCooldownUntil(Date.now() + 20 * 60 * 60 * 1000);
-        }
-      } else if (triggerData.skipped === "too_recent") {
-        setMomentCooldownUntil(Date.now() + 20 * 60 * 60 * 1000);
-      }
-    } catch {
-      // silent
-    } finally {
-      setMomentTriggering(false);
-    }
-  }, [agent, momentTriggering]);
-
-  const handleOpenMomentVivant = useCallback(
-    async (_messageId: string) => {
-      if (!agent) return;
-      // Récupérer le scénario ouvert pour cet agent
-      try {
-        const res = await fetch(`/api/moment-vivant/${agent.slug}`);
-        const data = await res.json() as { moment: MomentVivantScenario | null };
-        if (data.moment) {
-          setActiveMoment(data.moment);
-        }
-      } catch {
-        // silent
-      }
-    },
-    [agent]
-  );
 
   // Group messages by date
   const messagesWithDates: Array<
@@ -411,17 +360,6 @@ export function ChatPanel() {
 
   return (
     <>
-      {/* Moment Vivant chat overlay */}
-      {activeMoment && agent && (
-        <MomentVivantChat
-          agent={agent}
-          scenario={activeMoment}
-          gradient={gradient}
-          initials={initials}
-          onClose={() => setActiveMoment(null)}
-        />
-      )}
-
       {/* Tier unlock VN popup */}
       {tierUnlock && agent && (
         <TierUnlockPopup
@@ -490,19 +428,6 @@ export function ChatPanel() {
               </div>
             </>
           )}
-          {activeAgentSlug && agent && (
-            <button
-              onClick={handleTriggerMoment}
-              disabled={momentTriggering || (momentCooldownUntil !== null && Date.now() < momentCooldownUntil)}
-              title="Déclencher un Moment Vivant"
-              className="w-8 h-8 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors shrink-0 border border-amber-500/20"
-            >
-              {momentTriggering
-                ? <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                : <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              }
-            </button>
-          )}
           <button
             onClick={closeChat}
             className="w-8 h-8 rounded-lg bg-white/6 hover:bg-white/10 flex items-center justify-center transition-colors shrink-0"
@@ -543,7 +468,6 @@ export function ChatPanel() {
                     agentInitials={initials}
                     agentIconUrl={agent.icon_url ?? null}
                     gradient={gradient}
-                    onOpenMomentVivant={handleOpenMomentVivant}
                   />
                 );
               })}

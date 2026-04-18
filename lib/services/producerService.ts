@@ -2,8 +2,6 @@ import { callOpenRouter, LLM_MODELS, LLM_PARAMS } from "@/lib/config/llm";
 import {
   GDD_TEMPLATE,
   TECH_SPEC_TEMPLATE,
-  DATA_ARCH_TEMPLATE,
-  ASSET_LIST_TEMPLATE,
   BACKLOG_TEMPLATE,
   README_TEMPLATE,
 } from "@/lib/prompts/templates/docs";
@@ -38,7 +36,7 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     sortOrder: 1,
     title: "Game Design Document",
     description:
-      "Rédige le GDD complet du jeu : vision, gameplay, univers, structure et contraintes.",
+      "Rédige le GDD complet du mini-jeu web : vision, gameplay, univers du cours espion, structure et contraintes.",
     deliverablePath: "docs/gdd.md",
     requiresReview: true,
     agentDepartment: "game-design",
@@ -48,47 +46,37 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
     sortOrder: 2,
     title: "Spécification Technique",
     description:
-      "Rédige la spec technique : stack, architecture, systèmes, performance et déploiement.",
+      "Rédige la spec technique web : stack (Phaser/Canvas/vanilla), architecture, systèmes, performance et intégration VN.",
     deliverablePath: "docs/tech-spec.md",
     requiresReview: true,
     agentDepartment: "programming",
-    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Lead Developer senior", TECH_SPEC_TEMPLATE, dc, decisions),
+    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Lead Developer web senior", TECH_SPEC_TEMPLATE, dc, decisions),
   },
   {
     sortOrder: 3,
-    title: "Architecture Data & État",
-    description:
-      "Rédige l'architecture data : modèle de données, gestion d'état, persistance et événements.",
-    deliverablePath: "docs/data-arch.md",
-    requiresReview: false,
-    agentDepartment: "programming",
-    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Architecte logiciel senior", DATA_ARCH_TEMPLATE, dc, decisions),
-  },
-  {
-    sortOrder: 4,
-    title: "Asset List",
-    description:
-      "Dresse la liste complète des assets graphiques, audio et data nécessaires au projet.",
-    deliverablePath: "docs/asset-list.md",
-    requiresReview: false,
-    agentDepartment: "art",
-    promptBuilder: (p, dc, decisions) => buildDocPrompt(p, "Lead Artist & Audio Designer", ASSET_LIST_TEMPLATE, dc, decisions),
-  },
-  {
-    sortOrder: 5,
     title: "Backlog de Développement",
     description:
-      "Génère le backlog complet avec tous les items, leurs dépendances et les waves estimées.",
+      "Génère le backlog complet : items dev, dépendances et waves estimées.",
     deliverablePath: "docs/backlog.md",
     requiresReview: true,
     agentDepartment: "production",
     promptBuilder: (p, dc, decisions) => buildBacklogPrompt(p, dc, decisions),
   },
   {
-    sortOrder: 6,
+    sortOrder: 4,
+    title: "Design du Cours & Intégration VN",
+    description:
+      "Rédige le design pédagogique du cours espion et la spec d'intégration complète avec le visual novel (API postMessage, scoring, états).",
+    deliverablePath: "docs/course-design.md",
+    requiresReview: true,
+    agentDepartment: "narrative",
+    promptBuilder: (p, dc, decisions) => buildCourseDesignPrompt(p, dc, decisions),
+  },
+  {
+    sortOrder: 5,
     title: "README",
     description:
-      "Rédige le README public du jeu : pitch joueur, ambiance, boucle de jeu — sans jargon technique.",
+      "Rédige le README public du mini-jeu : pitch joueur, ambiance du cours espion, boucle de jeu — sans jargon technique.",
     deliverablePath: "README.md",
     requiresReview: true,
     agentDepartment: "game-design",
@@ -102,6 +90,26 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
 
 const TRIPLE_BACKTICK = "```";
 
+/** Bloc contextuel Université d'Espions injecté dans tous les prompts de la pipeline. */
+function buildSpyUniversityContext(project: Project): string {
+  const lines: string[] = [
+    "CONTEXTE STUDIO — Université d'Espions :",
+    "Ce studio développe EXCLUSIVEMENT des mini-jeux web destinés à s'intégrer dans un visual novel (VN) sur le thème d'une université d'espions.",
+    "Chaque projet = un cours de l'université = un mini-jeu web jouable depuis un navigateur.",
+  ];
+  if (project.courseInfo) {
+    lines.push(`Cours : "${project.courseInfo.courseName}" | Module VN : ${project.courseInfo.vnModule}`);
+    if (project.courseInfo.mechanics.length > 0) {
+      lines.push(`Mécaniques clés : ${project.courseInfo.mechanics.join(", ")}`);
+    }
+    if (project.courseInfo.webEngine) {
+      lines.push(`Engine web cible : ${project.courseInfo.webEngine}`);
+    }
+  }
+  lines.push("Toutes les décisions techniques et de design doivent servir CET objectif.");
+  return lines.join("\n");
+}
+
 function buildDocPrompt(project: Project, role: string, template: string, decisionsContext?: string, decisions?: ProjectDecision[]): string {
   const decisionsBlock = decisionsContext
     ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
@@ -109,9 +117,13 @@ function buildDocPrompt(project: Project, role: string, template: string, decisi
   const constraintsBlock = decisions && decisions.length > 0
     ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
     : "";
+  const spyContext = buildSpyUniversityContext(project);
 
   return `Tu es ${role} dans un studio de jeu vidéo indépendant.
-Tu travailles sur le jeu "${project.title}" : ${project.description}
+
+${spyContext}
+
+Tu travailles sur le mini-jeu "${project.title}" : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
 ${decisionsBlock}${constraintsBlock}
 Rédige le document demandé en suivant EXACTEMENT cette structure :
@@ -119,9 +131,10 @@ Rédige le document demandé en suivant EXACTEMENT cette structure :
 ${template.replace(/{titre}/g, project.title)}
 
 RÈGLES IMPÉRATIVES :
-- Sois spécifique à CE jeu, aucun contenu générique
-- Chaque section doit être actionnable pour un développeur
-- Utilise des exemples concrets adaptés au genre "${project.genre}"
+- Sois spécifique à CE mini-jeu web et à son cours espion, aucun contenu générique
+- Chaque section doit être actionnable pour un développeur web
+- Utilise des exemples concrets adaptés au genre "${project.genre}" et au thème espion
+- Garde toujours en tête que ce jeu doit fonctionner dans un navigateur et s'intégrer dans un VN
 - RESPECTE IMPÉRATIVEMENT les décisions du directeur listées ci-dessus
 - RESPECTE IMPÉRATIVEMENT les garde-fous listés ci-dessus — ne les contourne JAMAIS
 - Si tu dois décider d'un point NON couvert par les décisions du directeur, marque-le avec [DÉCISION IA] en début de ligne
@@ -141,8 +154,13 @@ function buildBacklogPrompt(project: Project, decisionsContext?: string, decisio
     ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
     : "";
 
+  const spyContext = buildSpyUniversityContext(project);
+
   return `Tu es le Producer d'un studio de jeu vidéo indépendant.
-Tu travailles sur le jeu "${project.title}" : ${project.description}
+
+${spyContext}
+
+Tu travailles sur le mini-jeu "${project.title}" : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
 ${decisionsBlock}${constraintsBlock}
 Génère le backlog de développement complet en suivant EXACTEMENT cette structure :
@@ -150,11 +168,12 @@ Génère le backlog de développement complet en suivant EXACTEMENT cette struct
 ${BACKLOG_TEMPLATE.replace(/{titre}/g, project.title)}
 
 RÈGLES IMPÉRATIVES :
-- Minimum 15 items couvrant core gameplay, systèmes, UI et assets
+- Minimum 15 items couvrant core gameplay web, systèmes, UI et assets
+- Inclure des items spécifiques à l'intégration VN (postMessage API, scoring, états de complétion)
 - Chaque item doit avoir des critères d'acceptation précis
 - Les dépendances doivent former un DAG sans cycles
 - Le graphe de dépendances final doit lister les waves clairement
-- Adapte les items au genre "${project.genre}" et au moteur "${project.engine}"
+- Adapte les items au genre "${project.genre}", au moteur "${project.engine}" et à la plateforme web
 - RESPECTE IMPÉRATIVEMENT les décisions du directeur listées ci-dessus
 - RESPECTE IMPÉRATIVEMENT les garde-fous listés ci-dessus — ne les contourne JAMAIS
 - Si tu dois décider d'un point NON couvert par les décisions du directeur, marque-le avec [DÉCISION IA] en début de ligne
@@ -162,6 +181,90 @@ RÈGLES IMPÉRATIVES :
 - N'échappe jamais le document sous forme de chaîne avec des \n ou du JSON
 - Langue : Français
 - Ne réponds QUE avec le contenu du document, sans introduction ni commentaire`;
+}
+
+function buildCourseDesignPrompt(project: Project, decisionsContext?: string, decisions?: ProjectDecision[]): string {
+  const decisionsBlock = decisionsContext
+    ? `\n\n---\n\n${decisionsContext}\n\n---\n\n`
+    : "";
+  const constraintsBlock = decisions && decisions.length > 0
+    ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
+    : "";
+  const spyContext = buildSpyUniversityContext(project);
+  const courseName = project.courseInfo?.courseName ?? project.title;
+  const vnModule = project.courseInfo?.vnModule ?? "Semestre 1";
+  const mechanics = project.courseInfo?.mechanics ?? [];
+  const webEngine = project.courseInfo?.webEngine ?? "phaser";
+  const targetUrl = project.courseInfo?.targetIntegrationUrl ?? "À définir";
+
+  return `Tu es un Narrative Designer et Lead Developer spécialisé intégration dans un studio de jeu vidéo.
+
+${spyContext}
+
+Tu rédiges le document de design du cours et la spec d'intégration VN pour le mini-jeu "${project.title}".
+Engine web : ${webEngine} | URL cible d'intégration : ${targetUrl}
+${decisionsBlock}${constraintsBlock}
+Rédige le document en suivant EXACTEMENT cette structure :
+
+# Design du Cours & Intégration VN — ${courseName}
+
+## 1. Identité du Cours
+- **Nom du cours** : ${courseName}
+- **Module VN** : ${vnModule}
+- **Mécaniques** : ${mechanics.length > 0 ? mechanics.join(", ") : "À définir"}
+- **Engine web** : ${webEngine}
+
+## 2. Objectif Pédagogique Espion
+<!-- Quelle compétence d'espion ce cours enseigne-t-il ? Qu'apprend l'étudiant/agent ? -->
+
+## 3. Scénario Narratif du Cours
+<!-- Contexte fictif du cours dans l'université. Qui est le professeur ? Quelle est la mission d'entraînement ? -->
+
+## 4. Structure de Progression
+<!-- Les étapes ou niveaux du cours. Comment l'étudiant progresse-t-il ? -->
+
+## 5. Système de Scoring
+<!-- Critères de réussite, score minimum, grades (S/A/B/C/F). Formule de calcul. -->
+
+## 6. Résultat dans le VN
+<!-- Ce qui change dans le visual novel selon la performance du joueur. Branches narratives débloquées. -->
+
+## 7. Ton & Atmosphère
+<!-- Ambiance visuelle et sonore du cours. Registre (sérieux, humoristique, tendu...) -->
+
+---
+
+## 8. Intégration VN — API postMessage
+
+### Événements émis par le mini-jeu
+\`\`\`json
+{ "type": "GAME_READY" }
+{ "type": "GAME_COMPLETED", "score": 0-100, "grade": "S"|"A"|"B"|"C"|"F", "durationMs": number }
+{ "type": "GAME_FAILED", "reason": string }
+\`\`\`
+
+### Événements reçus par le mini-jeu
+\`\`\`json
+{ "type": "GAME_START", "studentId": string, "difficulty": "easy"|"normal"|"hard" }
+{ "type": "GAME_PAUSE" }
+{ "type": "GAME_RESUME" }
+\`\`\`
+
+## 9. États de Complétion
+<!-- États possibles : non tenté, en cours, réussi, échoué. Persistance des scores dans le VN. -->
+
+## 10. Contraintes Techniques d'Intégration
+<!-- Dimensions iframe, fps cible, compatibilité navigateurs, assets autorisés. -->
+
+RÈGLES IMPÉRATIVES :
+- Le cours doit s'inscrire cohéremment dans l'univers d'une université d'espions
+- Reste fidèle aux mécaniques de jeu définies dans le GDD
+- Le scoring doit être mesurable et intégrable dans le VN (valeurs normalisées [0-100])
+- L'API postMessage doit être exhaustive et typée — permettre au dev VN de l'implémenter sans ambiguïté
+- RESPECTE IMPÉRATIVEMENT les décisions du directeur listées ci-dessus
+- Rends le markdown BRUT, sans bloc ${TRIPLE_BACKTICK}markdown externe
+- Langue : Français
+- Ne réponds QUE avec le contenu du document`;
 }
 
 function buildReadmePrompt(project: Project, decisionsContext?: string, decisions?: ProjectDecision[]): string {
@@ -172,21 +275,27 @@ function buildReadmePrompt(project: Project, decisionsContext?: string, decision
     ? `\n\n${buildDecisionConstraints(decisions)}\n\n`
     : "";
 
+  const spyContext = buildSpyUniversityContext(project);
+  const courseName = project.courseInfo?.courseName ?? project.title;
+
   return `Tu es le Game Designer créatif et copywriter d'un studio de jeu vidéo indépendant.
-Tu travailles sur le jeu "${project.title}" : ${project.description}
+
+${spyContext}
+
+Tu travailles sur le mini-jeu "${project.title}" (${courseName}) : ${project.description}
 Genre : ${project.genre} | Plateformes : ${project.platforms.join(", ")}
 ${decisionsBlock}${constraintsBlock}
-Rédige le README public du jeu en suivant EXACTEMENT cette structure :
+Rédige le README public du mini-jeu en suivant EXACTEMENT cette structure :
 
 ${README_TEMPLATE.replace(/{titre}/g, project.title)}
 
 RÈGLES IMPÉRATIVES :
-- Écris pour un joueur curieux, PAS pour un développeur
+- Écris pour un joueur curieux qui découvre le cours espion, PAS pour un développeur
+- Évoque l'univers de l'Université d'Espions avec enthousiasme
 - Zéro jargon technique : pas de stack, pas de framework, pas d'architecture
-- Chaque phrase doit donner ENVIE — du rythme, de l'émotion, de l'enthousiasme
-- Sois précis sur ce que le joueur VIT (sensations, tension, satisfaction), pas sur ce que le code fait
-- Utilise des comparaisons avec des jeux connus uniquement si elles font vraiment mouche
-- Le ton doit être passionné et direct, comme un pitch de Game Jam
+- Chaque phrase doit donner ENVIE de jouer et d'entrer dans ce cours espion
+- Sois précis sur ce que le joueur VIT (sensations, tension, satisfaction d'espion)
+- Le ton doit être passionné et direct, comme un brief de mission secrète
 - Rends le markdown BRUT, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation
 - N'échappe jamais le document sous forme de chaîne avec des \n ou du JSON
 - Langue : Français
@@ -328,7 +437,7 @@ function pickAgent(department: string, agents: Agent[]): Agent | null {
 
 /**
  * Generate the full concept pipeline for a project.
- * Creates 6 tasks (GDD → TechSpec → DataArch → AssetList → Backlog → README).
+ * Creates 5 tasks (GDD → TechSpec → Backlog → CourseDesign → README).
  * The GDD task is pre-filled with the finalized GDD V2 from brainstorming.
  * All other tasks are generated sequentially, each audited against the GDD.
  */
@@ -675,7 +784,7 @@ interface DevTaskDef {
   deliverable_type?: string;
   deliverable_path: string;
   context_files: string[];
-  depends_on_indices: number[]; // global indices across all tasks
+  depends_on_refs: string[]; // backlog_ref of tasks this task depends on
 }
 
 interface DevWaveDef {
@@ -776,8 +885,12 @@ function buildNextWavePrompt(params: {
     .filter(Boolean)
     .join("\n\n---\n\n");
 
+  const spyContext = buildSpyUniversityContext(project);
+
   return `Tu es un Producer technique senior.
-Tu dois générer UNIQUEMENT la prochaine wave de développement pour le jeu "${project.title}".
+Tu dois générer UNIQUEMENT la prochaine wave de développement pour le mini-jeu "${project.title}".
+
+${spyContext}
 
 Pitch : ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}
@@ -835,9 +948,13 @@ function buildDevWavesPrompt(project: Project, backlogContent: string, agents: A
     .map((a) => `- ${a.slug}: ${a.name} (département: ${a.department})`)
     .join("\n");
 
+  const spyContext = buildSpyUniversityContext(project);
+
   return `Tu es un Producer/Chef de projet technique dans un studio de jeu vidéo.
 
-Voici le Backlog complet du jeu "${project.title}" :
+${spyContext}
+
+Voici le Backlog complet du mini-jeu "${project.title}" :
 ---
 ${backlogContent}
 ---
@@ -849,12 +966,12 @@ Analyse le backlog et génère des waves de développement PARALLÉLISABLES.
 
 RÈGLES :
 - Chaque wave contient des tâches qui peuvent s'exécuter en parallèle
-- Une tâche de wave N+1 dépend d'au moins une tâche de wave N
+- Une tâche de wave N+1 dépend de tâches de wave N
 - Chaque tâche doit référencer son item backlog (ex: CORE-001)
 - Assigne chaque tâche à l'agent le plus pertinent (utilise exactement le slug fourni, ou null)
 - deliverable_type doit être STRICTEMENT l'une de ces valeurs : "code", "markdown", "json", "config", "repo-init"
 - Chaque tâche doit spécifier le fichier de sortie (deliverable_path)
-- depends_on_indices : indices GLOBAUX dans la liste plate de toutes les tâches (toutes waves confondues, en commençant à 0)
+- depends_on_refs : liste des backlog_ref dont cette tâche dépend (ex: ["CORE-001", "SYS-002"]). Vide pour les tâches de wave 1.
 
 Réponds UNIQUEMENT en JSON strict, sans texte avant ni après :
 {
@@ -871,7 +988,7 @@ Réponds UNIQUEMENT en JSON strict, sans texte avant ni après :
           "deliverable_type": "code",
           "deliverable_path": "src/systems/input.ts",
           "context_files": [],
-          "depends_on_indices": []
+          "depends_on_refs": []
         }
       ]
     }
@@ -941,17 +1058,18 @@ export async function generateDevWaves(projectId: string, project: Project): Pro
     waves = await callDevWavesLLM(prompt, 0.1);
   }
 
-  // Flatten all tasks into a global ordered list for index resolution
+  // Flatten all tasks into a global ordered list for ref resolution
   const allDefs = waves.flatMap((w) => w.tasks.map((t) => ({ ...t, waveNumber: w.number })));
   const createdTasks: PipelineTask[] = [];
+  // Map backlog_ref → task id, built as tasks are created
+  const refToTaskId = new Map<string, string>();
 
   for (let i = 0; i < allDefs.length; i++) {
     const def = allDefs[i];
 
-    // Resolve depends_on_indices (must reference already-processed tasks)
-    const dependsOn: string[] = (def.depends_on_indices ?? [])
-      .filter((idx: number) => idx >= 0 && idx < i)
-      .map((idx: number) => createdTasks[idx]?.id)
+    // Resolve depends_on_refs via backlog_ref names (only tasks already created)
+    const dependsOn: string[] = (def.depends_on_refs ?? [])
+      .map((ref: string) => refToTaskId.get(ref))
       .filter(Boolean) as string[];
 
     // Wave 1 tasks with no explicit deps start as ready; everything else as created
@@ -987,6 +1105,7 @@ export async function generateDevWaves(projectId: string, project: Project): Pro
     });
 
     createdTasks.push(task);
+    if (def.backlog_ref) refToTaskId.set(def.backlog_ref, task.id);
   }
 
   return createdTasks;
@@ -1100,9 +1219,13 @@ function buildDevTaskPrompt(
 
   const backlogLine = task.backlogRef ? `\nItem backlog : ${task.backlogRef}` : "";
 
-  return `Tu es un développeur expert dans un studio de jeu vidéo indépendant.
+  const spyContext = buildSpyUniversityContext(project);
 
-Jeu : "${project.title}" — ${project.description}
+  return `Tu es un développeur web expert dans un studio de jeu vidéo indépendant.
+
+${spyContext}
+
+Mini-jeu : "${project.title}" — ${project.description}
 Moteur : ${project.engine} | Plateformes : ${project.platforms.join(", ")} | Genre : ${project.genre}${backlogLine}
 
 Tâche : ${task.title}

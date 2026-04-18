@@ -13,52 +13,52 @@ export interface ConfidenceTierData {
 export const CONFIDENCE_TIERS: ConfidenceTierData[] = [
   {
     threshold: 0,
-    label: "Collègue",
-    labelShort: "Collègue",
+    label: "Inconnu(e)",
+    labelShort: "Inconnu",
     color: "text-gray-400",
     gradient: "from-gray-500 to-slate-600",
-    description: "Vous venez de vous rencontrer",
+    description: "Vous vous connaissez à peine",
+    unlocks: "Profil de base visible",
+  },
+  {
+    threshold: 30,
+    label: "Collègue",
+    labelShort: "Collègue",
+    color: "text-blue-400",
+    gradient: "from-blue-500 to-cyan-500",
+    description: "Le ton est cordial, la relation s'installe",
     unlocks: "Profil complet visible",
   },
   {
-    threshold: 25,
-    label: "Camarade",
-    labelShort: "Camarade",
-    color: "text-blue-400",
-    gradient: "from-blue-500 to-cyan-500",
-    description: "Une vraie sympa s'installe",
-    unlocks: "Photo exclusive",
-  },
-  {
-    threshold: 75,
+    threshold: 100,
     label: "Ami(e)",
     labelShort: "Ami(e)",
     color: "text-violet-400",
     gradient: "from-violet-500 to-purple-500",
-    description: "La confiance grandit",
-    unlocks: "Backstory secrète + conversations nocturnes",
+    description: "Une vraie chaleur s'installe — taquineries, ouverture",
+    unlocks: "Photo exclusive + conversations personnelles",
   },
   {
-    threshold: 150,
+    threshold: 250,
     label: "Confident(e)",
     labelShort: "Confident(e)",
     color: "text-pink-400",
     gradient: "from-pink-500 to-rose-500",
-    description: "Elle se confie vraiment à toi",
-    unlocks: "Scène exclusive + Photo #2",
+    description: "Elle se confie, les secrets arrivent",
+    unlocks: "Backstory secrète + scène exclusive",
   },
   {
-    threshold: 300,
+    threshold: 500,
     label: "Lien unique",
     labelShort: "Lien",
     color: "text-amber-400",
     gradient: "from-amber-500 to-orange-500",
-    description: "Un lien au-delà du studio",
-    unlocks: "Photo intime + Backstory complète + Chat inédit",
+    description: "Une complicité totale — au-delà du studio",
+    unlocks: "Photo intime + chat inédit + histoire commune",
   },
 ];
 
-export const CONFIDENCE_MAX = 300;
+export const CONFIDENCE_MAX = 500;
 
 export function getTierForLevel(level: number): ConfidenceTierData {
   for (let i = CONFIDENCE_TIERS.length - 1; i >= 0; i--) {

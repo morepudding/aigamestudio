@@ -33,6 +33,7 @@ import {
   styleEmojis,
   barbeEmojis,
   traitEmojis,
+  piercingEmplacements,
   ethnies,
   ethnicColors,
   ageRanges,
@@ -201,6 +202,7 @@ export default function RecruterPage() {
     taille: "",
     style: "",
     traitDistinctif: "",
+    piercingEmplacement: "",
     ethnie: "",
     age: "",
   });
@@ -209,6 +211,8 @@ export default function RecruterPage() {
     morphologie: "",
     style: "",
     barbe: "",
+    traitDistinctif: "",
+    piercingEmplacement: "",
     ethnie: "",
     age: "",
   });
@@ -286,7 +290,7 @@ export default function RecruterPage() {
       const newMix = rollPersonality();
       setPersonalityMix(newMix);
       setSpinning(false);
-      if (department) fetchPersonalityBio(newMix, department);
+      // portrait généré à la validation du combo, pas au re-roll
     }, 600);
   };
 
@@ -408,8 +412,8 @@ export default function RecruterPage() {
         generateName();
       }
 
-      // Fetch personality bio when landing on personality step
-      if (nextStep === 2 && department) {
+      // Génère le portrait à la validation du combo de personnalité (quand on quitte l'étape 2)
+      if (step === 2 && department) {
         fetchPersonalityBio(personalityMix, department);
       }
     }
@@ -511,7 +515,14 @@ export default function RecruterPage() {
               onReroll={handleReroll}
               spinning={spinning}
             />
-            {/* AI personality bio */}
+          </div>
+        );
+
+      // ─── APPARENCE ────────────────────────────────────────
+      case 3:
+        return (
+          <div className="space-y-5">
+            {/* Portrait psychologique — généré à la validation du combo */}
             {(bioLoading || personalityBio) && (
               <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5 space-y-3">
                 <p className="text-[10px] uppercase tracking-widest text-violet-400/70 font-semibold">
@@ -523,25 +534,16 @@ export default function RecruterPage() {
                     <div className="h-2.5 bg-white/10 rounded w-5/6" />
                     <div className="h-2.5 bg-white/10 rounded w-full" />
                     <div className="h-2.5 bg-white/10 rounded w-4/5" />
-                    <div className="h-2.5 bg-white/10 rounded w-full" />
-                    <div className="h-2.5 bg-white/10 rounded w-3/4" />
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {personalityBio.split(/\n+/).filter(Boolean).map((para, i) => (
-                      <p key={i} className="text-sm text-muted-foreground leading-relaxed italic">{para}</p>
+                      <p key={i} className="text-sm text-muted-foreground leading-relaxed">{para}</p>
                     ))}
                   </div>
                 )}
               </div>
             )}
-          </div>
-        );
-
-      // ─── APPARENCE ────────────────────────────────────────
-      case 3:
-        return (
-          <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-1">
@@ -556,22 +558,27 @@ export default function RecruterPage() {
                   const randomPick = <T,>(arr: readonly { value: T }[]) =>
                     arr[Math.floor(Math.random() * arr.length)].value;
                   if (gender === "femme") {
+                    const trait = randomPick(appearanceOptions.femme.traitDistinctif) as string;
                     setAppearanceFemme({
                       cheveux: randomPick(appearanceOptions.femme.cheveux) as string,
                       yeux: randomPick(appearanceOptions.femme.yeux) as string,
                       morphologie: randomPick(appearanceOptions.femme.morphologie) as string,
                       taille: randomPick(appearanceOptions.femme.taille) as string,
                       style: randomPick(appearanceOptions.femme.style) as string,
-                      traitDistinctif: randomPick(appearanceOptions.femme.traitDistinctif) as string,
+                      traitDistinctif: trait,
+                      piercingEmplacement: trait === "piercings" ? piercingEmplacements[Math.floor(Math.random() * piercingEmplacements.length)].value : "",
                       ethnie: ethnies[Math.floor(Math.random() * ethnies.length)].value,
                       age: ageRanges[Math.floor(Math.random() * ageRanges.length)].value,
                     });
                   } else {
+                    const trait = randomPick(appearanceOptions.femme.traitDistinctif) as string;
                     setAppearanceHomme({
                       cheveux: randomPick(appearanceOptions.homme.cheveux) as string,
                       morphologie: randomPick(appearanceOptions.homme.morphologie) as string,
                       style: randomPick(appearanceOptions.homme.style) as string,
                       barbe: randomPick(appearanceOptions.homme.barbe) as string,
+                      traitDistinctif: trait,
+                      piercingEmplacement: trait === "piercings" ? piercingEmplacements[Math.floor(Math.random() * piercingEmplacements.length)].value : "",
                       ethnie: ethnies[Math.floor(Math.random() * ethnies.length)].value,
                       age: ageRanges[Math.floor(Math.random() * ageRanges.length)].value,
                     });
@@ -701,7 +708,11 @@ export default function RecruterPage() {
                     {[...appearanceOptions.femme.traitDistinctif].map((opt) => (
                       <button
                         key={opt.value}
-                        onClick={() => setAppearanceFemme((p) => ({ ...p, traitDistinctif: opt.value }))}
+                        onClick={() => setAppearanceFemme((p) => ({
+                          ...p,
+                          traitDistinctif: opt.value,
+                          piercingEmplacement: opt.value !== "piercings" ? "" : p.piercingEmplacement,
+                        }))}
                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
                           appearanceFemme.traitDistinctif === opt.value
                             ? "bg-primary/20 border border-primary text-white"
@@ -713,6 +724,27 @@ export default function RecruterPage() {
                       </button>
                     ))}
                   </div>
+                  {appearanceFemme.traitDistinctif === "piercings" && (
+                    <div className="mt-2 pl-1 space-y-1.5">
+                      <p className="text-[10px] text-white/40 uppercase tracking-wider">Emplacement</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...piercingEmplacements].map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setAppearanceFemme((p) => ({ ...p, piercingEmplacement: opt.value }))}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                              appearanceFemme.piercingEmplacement === opt.value
+                                ? "bg-primary/20 border border-primary text-white"
+                                : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
+                            }`}
+                          >
+                            <span>{opt.emoji}</span>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Ethnie */}
@@ -846,6 +878,52 @@ export default function RecruterPage() {
                   </div>
                 </div>
 
+                {/* Trait distinctif (homme) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Trait distinctif</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[...appearanceOptions.femme.traitDistinctif].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setAppearanceHomme((p) => ({
+                          ...p,
+                          traitDistinctif: opt.value,
+                          piercingEmplacement: opt.value !== "piercings" ? "" : p.piercingEmplacement,
+                        }))}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                          appearanceHomme.traitDistinctif === opt.value
+                            ? "bg-primary/20 border border-primary text-white"
+                            : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
+                        }`}
+                      >
+                        <span>{traitEmojis[opt.value] || ""}</span>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {appearanceHomme.traitDistinctif === "piercings" && (
+                    <div className="mt-2 pl-1 space-y-1.5">
+                      <p className="text-[10px] text-white/40 uppercase tracking-wider">Emplacement</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[...piercingEmplacements].map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setAppearanceHomme((p) => ({ ...p, piercingEmplacement: opt.value }))}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                              appearanceHomme.piercingEmplacement === opt.value
+                                ? "bg-primary/20 border border-primary text-white"
+                                : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
+                            }`}
+                          >
+                            <span>{opt.emoji}</span>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Ethnie */}
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Origine / Ethnie</label>
@@ -899,10 +977,10 @@ export default function RecruterPage() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-white mb-1">
-                Votre nouveau collaborateur
+                Votre nouvel agent
               </h2>
               <p className="text-muted-foreground text-sm">
-                L&apos;IA a imaginé un profil. Vous pouvez régénérer ou valider.
+                L&apos;IA a imaginé un profil. Assignez-le à un cours de l&apos;Université d&apos;Espions.
               </p>
             </div>
 
@@ -957,7 +1035,7 @@ export default function RecruterPage() {
                 {/* Project assignment */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium text-muted-foreground">
-                    Assignation
+                    Affectation — Cours de l&apos;Université d&apos;Espions
                   </h3>
                   <button
                     onClick={() => {
@@ -972,8 +1050,8 @@ export default function RecruterPage() {
                   >
                     <Building2 className="w-5 h-5 text-primary shrink-0" />
                     <div>
-                      <div className="font-medium text-white">Studio / Direction</div>
-                      <div className="text-xs text-muted-foreground">Rôle transversal</div>
+                      <div className="font-medium text-white">Direction du Studio</div>
+                      <div className="text-xs text-muted-foreground">Rôle transversal — tous les cours</div>
                     </div>
                   </button>
                   {!isStudioAssignment && projects.map((project) => (
@@ -989,7 +1067,9 @@ export default function RecruterPage() {
                       <div className={`w-8 h-8 rounded-lg bg-linear-to-br ${project.coverGradient} shrink-0`} />
                       <div>
                         <div className="font-medium text-white">{project.title}</div>
-                        <div className="text-xs text-muted-foreground">{project.genre}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {project.courseInfo ? project.courseInfo.courseName : project.genre}
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -1030,11 +1110,11 @@ export default function RecruterPage() {
                         Agent créé !
                       </div>
                       <button
-                        onClick={() => router.push(`/collaborateur/${generatedPath}/onboarding`)}
+                        onClick={() => router.push(`/collaborateur/${generatedPath}`)}
                         className="flex items-center gap-2 px-6 py-2.5 bg-linear-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 rounded-xl text-sm font-bold text-white transition-all shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40"
                       >
                         <Sparkles className="w-4 h-4" />
-                        Démarrer l&apos;onboarding
+                        Voir le collaborateur
                       </button>
                     </div>
                   )}

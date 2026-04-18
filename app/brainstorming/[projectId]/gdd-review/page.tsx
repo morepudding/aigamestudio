@@ -304,14 +304,14 @@ export default function GddReviewPage() {
     return (
       <div className="flex flex-col h-screen bg-background">
         {/* Header */}
-        <div className="border-b border-white/8 bg-card/50 px-6 py-4 shrink-0">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="border-b border-white/8 bg-card/50 px-4 sm:px-6 py-3 sm:py-4 shrink-0">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               </div>
               <div>
-                <h1 className="font-bold text-lg">GDD finalisé — {project?.title}</h1>
+                <h1 className="font-bold text-base sm:text-lg">GDD finalisé — {project?.title}</h1>
                 <p className="text-xs text-muted-foreground">
                   Document validé · Prêt pour la génération des autres documents
                 </p>
@@ -319,7 +319,7 @@ export default function GddReviewPage() {
             </div>
             <button
               onClick={() => router.push(`/projects/${projectId}`)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold transition-all"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold transition-all"
             >
               Lancer la pipeline
               <ChevronRight className="w-4 h-4" />
@@ -328,14 +328,14 @@ export default function GddReviewPage() {
         </div>
 
         {/* GDD V2 full view */}
-        <div className="flex-1 overflow-y-auto px-6 py-8">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="max-w-4xl mx-auto">
             <div className="bg-card border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-white/8 flex items-center gap-2">
+              <div className="px-4 sm:px-6 py-4 border-b border-white/8 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
                 <span className="font-semibold text-sm">Game Design Document — Version finale</span>
               </div>
-              <div className="px-6 py-6">
+              <div className="px-4 sm:px-6 py-4 sm:py-6">
                 <div className="prose prose-invert prose-sm max-w-none prose-headings:font-bold prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{gddV2}</ReactMarkdown>
                 </div>
@@ -353,34 +353,56 @@ export default function GddReviewPage() {
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
-      <div className="border-b border-white/8 bg-card/50 px-6 py-4 shrink-0">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-lg">Révision du GDD — {project?.title}</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              L&apos;IA a analysé son premier jet et identifié {critiqueQuestions.length} point{critiqueQuestions.length > 1 ? "s" : ""} à clarifier
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowV1(!showV1)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5 border border-white/8"
-            >
-              {showV1 ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              {showV1 ? "Masquer GDD V1" : "Voir GDD V1"}
-            </button>
-            {/* Progress badge */}
-            <div className="text-xs font-medium px-3 py-1.5 rounded-full bg-white/8 border border-white/10">
-              {answeredCount}/{critiqueQuestions.length} réponses
+      <div className="border-b border-white/8 bg-card/50 px-4 sm:px-6 py-3 sm:py-4 shrink-0">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-start sm:items-center justify-between gap-3">
+            <div>
+              <h1 className="font-bold text-base sm:text-lg">Révision du GDD — {project?.title}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {critiqueQuestions.length} point{critiqueQuestions.length > 1 ? "s" : ""} à clarifier
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setShowV1(!showV1)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 border border-white/8"
+              >
+                {showV1 ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{showV1 ? "Masquer GDD V1" : "Voir GDD V1"}</span>
+              </button>
+              {/* Progress badge */}
+              <div className="text-xs font-medium px-2.5 py-1.5 rounded-full bg-white/8 border border-white/10">
+                {answeredCount}/{critiqueQuestions.length}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* GDD V1 overlay on mobile */}
+      {showV1 && gddV1 && (
+        <div className="sm:hidden fixed inset-0 z-50 flex flex-col bg-[#0d0d12]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/8 shrink-0">
+            <span className="text-sm font-semibold">GDD V1 — Premier jet</span>
+            <button
+              onClick={() => setShowV1(false)}
+              className="p-2 rounded-lg hover:bg-white/8 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <EyeOff className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="prose prose-invert prose-sm max-w-none prose-headings:font-bold prose-headings:text-foreground prose-p:text-muted-foreground prose-li:text-muted-foreground prose-strong:text-foreground">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{gddV1}</ReactMarkdown>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Split layout */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left: Questions */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="max-w-2xl mx-auto space-y-4">
             {/* Intro */}
             <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl px-4 py-3">
@@ -428,9 +450,9 @@ export default function GddReviewPage() {
           </div>
         </div>
 
-        {/* Right: GDD V1 preview (optional) */}
+        {/* Right: GDD V1 preview (desktop only) */}
         {showV1 && gddV1 && (
-          <div className="w-[45%] border-l border-white/8 bg-white/2 overflow-hidden">
+          <div className="hidden sm:flex w-[45%] border-l border-white/8 bg-white/2 overflow-hidden flex-col">
             <GddViewer content={gddV1} label="GDD — Premier jet (V1)" />
           </div>
         )}

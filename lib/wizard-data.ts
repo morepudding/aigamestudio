@@ -1,14 +1,14 @@
 import type { Department, Gender, PersonalityTrait } from "@/lib/types/agent";
 
 export const departments: { id: Department; label: string; emoji: string; description: string }[] = [
-  { id: "art", label: "Art & Direction Artistique", emoji: "🎨", description: "Concept art, UI, 3D, animations" },
-  { id: "programming", label: "Programmation", emoji: "💻", description: "Gameplay, engine, outils, réseau" },
-  { id: "game-design", label: "Game Design", emoji: "🎮", description: "Mécaniques, levels, balancing" },
-  { id: "audio", label: "Audio & Musique", emoji: "🎵", description: "SFX, musique, sound design" },
-  { id: "narrative", label: "Narration & Scénario", emoji: "📝", description: "Story, dialogues, worldbuilding" },
-  { id: "qa", label: "QA & Testing", emoji: "🧪", description: "Tests, bugs, qualité, automation" },
-  { id: "marketing", label: "Marketing & Community", emoji: "📢", description: "Réseaux sociaux, trailers, events" },
-  { id: "production", label: "Production & Management", emoji: "📋", description: "Planning, sprints, coordination" },
+  { id: "art", label: "Art & Direction Artistique", emoji: "🎨", description: "Visuels des mini-jeux web : sprites, UI, animations canvas" },
+  { id: "programming", label: "Programmation", emoji: "💻", description: "Développement mini-jeux web (Phaser, Canvas, vanilla JS)" },
+  { id: "game-design", label: "Game Design", emoji: "🎮", description: "Mécaniques des cours espion, level design, balancing mini-jeux" },
+  { id: "audio", label: "Audio & Musique", emoji: "🎵", description: "SFX et musiques d'ambiance pour l'Université d'Espions" },
+  { id: "narrative", label: "Narration & Scénario", emoji: "📝", description: "Lore de l'université, dialogues VN, design des cours espion" },
+  { id: "qa", label: "QA & Testing", emoji: "🧪", description: "Tests des mini-jeux web, compatibilité navigateur, intégration VN" },
+  { id: "marketing", label: "Marketing & Community", emoji: "📢", description: "Communication autour du visual novel et de ses mini-jeux" },
+  { id: "production", label: "Production & Management", emoji: "📋", description: "Coordination des cours, planning des livrables VN" },
 ];
 
 export const genders: { id: Gender; label: string; emoji: string }[] = [
@@ -47,6 +47,12 @@ export const personalities: { id: PersonalityTrait; label: string; emoji: string
   { id: "franche",        label: "Franche",        emoji: "🗣️", description: "Dit ce qu'elle pense, sans détour, parfois trop directe",    famille: "Caractère" },
   { id: "mysterieuse",    label: "Mystérieuse",    emoji: "🔮", description: "Énigmatique, cryptique, révèle peu d'elle-même",             famille: "Caractère" },
   { id: "provocatrice",   label: "Provocatrice",   emoji: "😏", description: "Aime titiller, tester les limites, créer des étincelles",    famille: "Caractère" },
+  { id: "sarcastique",    label: "Sarcastique",    emoji: "😈", description: "Humour noir, pique avec le sourire, dit la vérité en biais",  famille: "Caractère" },
+  { id: "taquine",        label: "Taquine",        emoji: "😜", description: "Affectueusement moqueuse, chambrage bienveillant, crée la complicité", famille: "Caractère" },
+  // Émotionnelle (étendu)
+  { id: "solaire",        label: "Solaire",        emoji: "☀️", description: "Rayonnante, entraîne les autres sans effort, énergie contagieuse", famille: "Émotionnelle" },
+  // Relationnelle (étendu)
+  { id: "testante",       label: "Testante",       emoji: "🧪", description: "Observe, évalue discrètement, donne sa confiance seulement quand elle est méritée", famille: "Relationnelle" },
 ];
 
 export const appearanceOptions = {
@@ -184,6 +190,11 @@ export const traitEmojis: Record<string, string> = {
   piercings: "💎", tatouages: "🐉", lunettes: "🤓", cicatrice: "⚔️",
   "taches-de-rousseur": "🌞", heterochromie: "🔮", aucun: "—",
 };
+
+export const piercingEmplacements = [
+  { value: "nez", label: "Nez", emoji: "👃" },
+  { value: "levre", label: "Lèvre", emoji: "👄" },
+] as const;
 
 export const ethnies = [
   { value: "caucasienne", label: "Caucasienne", emoji: "🏻" },

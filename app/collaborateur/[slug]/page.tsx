@@ -6,13 +6,9 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowLeft,
-  Target,
   BookOpen,
   Sparkles,
-  CheckSquare,
   User,
-  Briefcase,
-  Rocket,
   FolderKanban,
   RefreshCw,
   Loader2,
@@ -26,6 +22,7 @@ import {
   Tag,
   Shield,
   Trash2,
+  ChevronRight,
 } from "lucide-react";
 import { projects } from "@/lib/data/projects";
 import { departments, personalities } from "@/lib/wizard-data";
@@ -110,7 +107,6 @@ const moodDisplay: Record<string, { emoji: string; label: string; color: string;
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   "recruté": { label: "Recruté", color: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
-  onboarding: { label: "Onboarding", color: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
   actif: { label: "Actif", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
 };
 
@@ -146,6 +142,41 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+const evePhysicalProfile = [
+  {
+    label: "Silhouette",
+    value: "grande, fine, un peu feline, avec une presence discrete mais magnetique.",
+  },
+  {
+    label: "Visage",
+    value: "traits anguleux et elegants, pommettes marquees, machoire douce mais nette.",
+  },
+  {
+    label: "Regard",
+    value: "yeux sombres, tres expressifs, avec un melange de fragilite et de defi.",
+  },
+  {
+    label: "Sourcils",
+    value: "bien dessines, donnant un air intense meme au repos.",
+  },
+  {
+    label: "Cheveux",
+    value: "longs, noirs, lisses (ou legerement ondules), souvent portes de facon naturelle.",
+  },
+  {
+    label: "Teint",
+    value: "clair, contraste fort avec les cheveux fonces.",
+  },
+  {
+    label: "Bouche",
+    value: "levres definies, souvent en expression neutre ou ironique.",
+  },
+  {
+    label: "Style global",
+    value: "edgy/boheme sombre, maquillage leger mais accent sur les yeux, vibe mysterieuse, lucide, un peu rebelle.",
+  },
+] as const;
+
 export default function AgentDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [agent, setAgent] = useState<AgentDetail | null>(null);
@@ -160,6 +191,8 @@ export default function AgentDetailPage() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [personalityBio, setPersonalityBio] = useState("");
   const [phrasesLoading, setPhrasesLoading] = useState(false);
+  const [backstoryExpanded, setBackstoryExpanded] = useState(false);
+
 
   useEffect(() => {
     if (!slug) return;
@@ -273,7 +306,7 @@ export default function AgentDetailPage() {
     try {
       const res = await fetch(`/api/agents/${agent.slug}/memory`, { method: "DELETE" });
       if (!res.ok) throw new Error("Échec de la réinitialisation");
-      window.location.href = `/collaborateur/${agent.slug}/onboarding`;
+      window.location.href = `/collaborateur/${agent.slug}`;
     } catch (error) {
       setResetError(error instanceof Error ? error.message : "Erreur inconnue");
       setResetting(false);
@@ -470,16 +503,8 @@ export default function AgentDetailPage() {
                 <ImageIcon className="w-4 h-4" />
                 Galerie photo
               </Link>
-              {(agent.status === "recruté" || agent.status === "onboarding") && (
-                <a
-                  href={`/collaborateur/${agent.slug}/onboarding`}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-linear-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 rounded-xl text-sm font-bold text-white transition-all shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40"
-                >
-                  <Rocket className="w-4 h-4" />
-                  {agent.status === "recruté" ? "Démarrer l'onboarding" : "Continuer l'onboarding"}
-                </a>
-              )}
             </div>
+
           </div>
 
           {/* Right: big portrait */}
@@ -507,44 +532,67 @@ export default function AgentDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Goal */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Target className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-white">Objectif</h2>
-              <span className="ml-auto text-[10px] text-muted-foreground/40 italic">non injecté en chat</span>
-            </div>
-            <p className="text-muted-foreground leading-relaxed">{agent.goal}</p>
-          </div>
 
-          {/* Backstory */}
+          {/* Histoire + Objectif fusionnés */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-1">
               <BookOpen className="w-5 h-5 text-primary" />
               <h2 className="text-lg font-semibold text-white">Histoire</h2>
               <AiImpactBadge />
             </div>
-            <p className="text-muted-foreground leading-relaxed whitespace-pre-line">{agent.backstory}</p>
+            <p className="text-xs text-muted-foreground/40 italic mb-4">{agent.goal}</p>
+            {(() => {
+              const paragraphs = agent.backstory.split(/\n+/).filter(Boolean);
+              if (agent.slug === "eve") {
+                return (
+                  <div className="space-y-3">
+                    {paragraphs.map((p, i) => (
+                      <p key={i} className="text-muted-foreground leading-relaxed">{p}</p>
+                    ))}
+                  </div>
+                );
+              }
+
+              const preview = paragraphs.slice(0, 2);
+              const rest = paragraphs.slice(2);
+              return (
+                <div className="space-y-3">
+                  {preview.map((p, i) => (
+                    <p key={i} className="text-muted-foreground leading-relaxed">{p}</p>
+                  ))}
+                  {rest.length > 0 && (
+                    <>
+                      {backstoryExpanded && rest.map((p, i) => (
+                        <p key={i} className="text-muted-foreground leading-relaxed">{p}</p>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setBackstoryExpanded((v) => !v)}
+                        className="flex items-center gap-1.5 text-xs text-primary/70 hover:text-primary transition-colors mt-1"
+                      >
+                        <ChevronRight className={`w-3.5 h-3.5 transition-transform ${backstoryExpanded ? "rotate-90" : ""}`} />
+                        {backstoryExpanded ? "Réduire" : `Lire la suite (${rest.length} paragraphe${rest.length > 1 ? "s" : ""})`}
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
-          {/* Tasks */}
-          {agent.tasks.length > 0 && (
+          {/* Physique (Eve) */}
+          {agent.slug === "eve" && (
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-4">
-                <CheckSquare className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-white">Tâches assignées</h2>
+                <User className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-semibold text-white">Physique</h2>
+                <AiImpactBadge label="Reference visuelle" />
               </div>
-              <div className="space-y-4">
-                {agent.tasks.map((task, i) => (
-                  <div key={i} className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
-                    <h3 className="font-semibold text-white text-sm">{task.task_name ?? `Tâche ${i + 1}`}</h3>
-                    {task.description && (
-                      <p className="text-muted-foreground text-sm">{task.description}</p>
-                    )}
-                    {task.expected_output && (
-                      <p className="text-xs text-muted-foreground/70 italic">Livrable : {task.expected_output}</p>
-                    )}
-                  </div>
+              <div className="grid gap-2">
+                {evePhysicalProfile.map((item) => (
+                  <p key={item.label} className="text-sm text-muted-foreground leading-relaxed">
+                    <span className="text-white font-medium">{item.label}:</span> {item.value}
+                  </p>
                 ))}
               </div>
             </div>
@@ -601,144 +649,84 @@ export default function AgentDetailPage() {
 
         {/* Right column */}
         <div className="space-y-6">
-          {/* Appearance */}
-          {agent.appearance_prompt && (
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-semibold text-white">Apparence</h2>
-              </div>
-              <p className="text-muted-foreground text-sm leading-relaxed italic">{agent.appearance_prompt}</p>
-            </div>
-          )}
 
-          {/* Visuals */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+          {/* Visuels — portrait only + bouton unique */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-white">Visuels</h2>
+              <h2 className="text-base font-semibold text-white">Visuels</h2>
               {regenerating && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
                   Génération…
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Portrait</p>
-                {portraitSrc ? (
-                  <div className="aspect-4/5 overflow-hidden rounded-xl border border-white/10 bg-white/5">
-                    <Image src={portraitSrc} alt={`Portrait de ${agent.name}`} width={320} height={400} unoptimized className="h-full w-full object-cover object-top" />
-                  </div>
-                ) : (
-                  <div className={`aspect-4/5 rounded-xl bg-linear-to-br ${gradient} flex items-center justify-center text-white text-3xl font-bold`}>
-                    {getInitials(agent.name)}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleRegenerateVisual("portrait")}
-                  disabled={!!regenerating}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isGeneratingPortrait ? <><Loader2 className="w-4 h-4 animate-spin" />Régénération…</> : <><RefreshCw className="w-4 h-4" />Portrait</>}
-                </button>
+            {/* Portrait principal */}
+            {portraitSrc ? (
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                <Image src={portraitSrc} alt={`Portrait de ${agent.name}`} width={320} height={400} unoptimized className="w-full object-cover object-top" />
               </div>
+            ) : (
+              <div className={`aspect-4/5 rounded-xl bg-linear-to-br ${gradient} flex items-center justify-center text-white text-4xl font-bold`}>
+                {getInitials(agent.name)}
+              </div>
+            )}
 
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Photo profil</p>
-                {iconSrc ? (
-                  <div className="flex justify-center">
-                    <div className="h-28 w-28 overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-lg">
-                      <Image src={iconSrc} alt={`Photo de profil de ${agent.name}`} width={112} height={112} unoptimized className="h-full w-full object-cover" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-center">
-                    <div className={`h-28 w-28 rounded-3xl bg-linear-to-br ${gradient} flex items-center justify-center text-white text-3xl font-bold shadow-lg`}>
-                      {getInitials(agent.name)}
-                    </div>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleRegenerateVisual("icon")}
-                  disabled={!!regenerating}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isGeneratingIcon ? <><Loader2 className="w-4 h-4 animate-spin" />Régénération…</> : <><RefreshCw className="w-4 h-4" />Photo</>}
-                </button>
+            {/* Photo profil compacte */}
+            {iconSrc && (
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shrink-0">
+                  <Image src={iconSrc} alt={`Photo de profil de ${agent.name}`} width={48} height={48} unoptimized className="h-full w-full object-cover" />
+                </div>
+                <p className="text-xs text-muted-foreground">Photo de profil</p>
               </div>
-            </div>
+            )}
 
             <button
               type="button"
               onClick={() => handleRegenerateVisual("both")}
               disabled={!!regenerating}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-indigo-500 to-cyan-500 px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {regenerating === "both" ? <><Loader2 className="w-4 h-4 animate-spin" />Régénération…</> : <><RefreshCw className="w-4 h-4" />Régénérer les deux</>}
+              {regenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Régénération…</> : <><RefreshCw className="w-4 h-4" />Régénérer les visuels</>}
             </button>
 
             {regenerationError && <p className="text-sm text-rose-400">{regenerationError}</p>}
           </div>
 
-          {/* Info */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Briefcase className="w-5 h-5 text-primary" />
-              <h2 className="text-lg font-semibold text-white">Informations</h2>
+          {/* Infos essentielles */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Département</span>
+              <span className="text-white font-medium">{dept?.label ?? agent.department}</span>
             </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Type</span>
-                <span className="text-white font-medium">Agent IA</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Département</span>
-                <span className="text-white font-medium">{dept?.label ?? agent.department}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Personnalité</span>
-                <span className="text-white font-medium capitalize">{agent.personality_primary}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Nuance</span>
-                <span className="text-white font-medium capitalize">{agent.personality_nuance}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Tâches</span>
-                <span className="text-white font-medium">{agent.tasks.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Mémoires</span>
-                <span className="text-white font-medium">{memories.length}</span>
-              </div>
-              {agent.assigned_project && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Assignation</span>
-                  <span className="text-white font-medium flex items-center gap-1.5">
-                    <FolderKanban className="w-3 h-3" />
-                    {agent.assigned_project === "studio"
-                      ? "Studio / Direction"
-                      : projects.find((p) => p.id === agent.assigned_project)?.title ?? agent.assigned_project}
-                  </span>
-                </div>
-              )}
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Mémoires</span>
+              <span className="text-white font-medium">{memories.length}</span>
             </div>
+            {agent.assigned_project && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Assignation</span>
+                <span className="text-white font-medium flex items-center gap-1.5">
+                  <FolderKanban className="w-3 h-3" />
+                  {agent.assigned_project === "studio"
+                    ? "Studio / Direction"
+                    : projects.find((p) => p.id === agent.assigned_project)?.title ?? agent.assigned_project}
+                </span>
+              </div>
+            )}
           </div>
+
           {/* Reset memory */}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => setShowResetModal(true)}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-medium text-rose-400/70 transition-colors hover:border-rose-500/40 hover:text-rose-400 hover:bg-rose-500/10"
-            >
-              <Trash2 className="w-4 h-4" />
-              Réinitialiser la relation
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5 text-sm font-medium text-rose-400/70 transition-colors hover:border-rose-500/40 hover:text-rose-400 hover:bg-rose-500/10"
+          >
+            <Trash2 className="w-4 h-4" />
+            Réinitialiser la relation
+          </button>
         </div>
       </div>
 
@@ -757,10 +745,7 @@ export default function AgentDetailPage() {
             </div>
 
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {agent.slug === "eve"
-                ? <>Réinitialiser Eve effacera <span className="text-white font-medium">tout ce qu&apos;elle sait de toi</span> et relancera la fondation du studio depuis le début. Tous les autres accès seront bloqués jusqu&apos;à complétion.</>
-                : <>Réinitialiser la mémoire de <span className="text-white font-medium">{agent.name}</span> supprimera tous ses souvenirs de toi et relancera l&apos;onboarding depuis le début.</>
-              }
+              Réinitialiser la mémoire de <span className="text-white font-medium">{agent.name}</span> supprimera tous ses souvenirs de toi.
             </p>
 
             {resetError && (

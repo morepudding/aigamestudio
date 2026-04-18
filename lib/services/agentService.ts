@@ -50,6 +50,7 @@ export interface Agent {
   personality_primary: string;
   personality_nuance: string;
   personality_extras: string | null;
+  personality_bio?: string | null;
   gender: string;
   department: string;
   status: string;
@@ -113,6 +114,7 @@ export async function createAgent(
     personality_primary: agent.personality_primary,
     personality_nuance: agent.personality_nuance,
     personality_extras: agent.personality_extras ?? null,
+    personality_bio: agent.personality_bio ?? null,
     gender: agent.gender,
     department: agent.department,
     status: agent.status,
@@ -139,7 +141,7 @@ export async function createAgent(
 
 export async function updateAgentFields(
   slug: string,
-  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level">>
+  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level" | "personality_bio" | "appearance_prompt" | "gender">>
 ): Promise<void> {
   const { error } = await supabase.from("agents").update(updates).eq("slug", slug);
   if (error) throw new Error(error.message);

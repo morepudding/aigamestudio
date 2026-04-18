@@ -36,14 +36,15 @@ export async function POST(req: NextRequest) {
     ? `Personnage : ${agentName}, ${agentRole} (département ${department})`
     : `Un collaborateur du département ${department}`;
 
-  const systemPrompt = `Tu es un auteur de fiction qui écrit des descriptions psychologiques de personnages pour un studio de jeu vidéo.
-Tu reçois un mélange de traits de personnalité et tu génères une description en prose, en français, qui les fond en un portrait cohérent et nuancé.
+  const systemPrompt = `Tu écris des portraits psychologiques de collaborateurs pour un studio de jeu vidéo.
+Tu reçois un mélange de traits de personnalité et tu génères une description en prose, en français, directe et naturelle.
 La description doit :
 - Être à la troisième personne (elle/il)
-- Tenir en 2 paragraphes denses et évocateurs (pas de titres, pas de listes)
-- Mêler les traits sans les citer mot pour mot — ils doivent transparaître dans le style et les images utilisées
-- Avoir une tonalité littéraire, légèrement dramatique, adaptée à un univers de studio de création
-- Être dense, précise, avec des images concrètes
+- Tenir en 2 paragraphes (pas de titres, pas de listes)
+- Mêler les traits sans les citer mot pour mot — ils transparaissent dans ce qu'on dit concrètement de la personne
+- Avoir un ton direct, honnête, comme si on décrivait quelqu'un qu'on connaît vraiment — ni poétique ni corporate
+- Parler de comportements concrets, de façons d'être dans le travail, dans les relations, pas de métaphores vagues
+- Éviter : les formulations cryptiques, les images abstraites, le style "roman psychologique". Dire les choses clairement.
 Réponds UNIQUEMENT avec le texte brut — aucun JSON, aucun titre, aucun commentaire.`;
 
   const userPrompt = `${nameContext}\n\n${traitsDesc}\n\nÉcris la description de personnalité.`;
