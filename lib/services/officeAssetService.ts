@@ -12,29 +12,70 @@ export type OfficeAssetType =
   | "water_fountain"
   | "coffee_machine";
 
-const LS_PREFIX = "office_asset_url_v2_";
+export type AssetVariant = 1 | 2 | 3 | 4;
 
-function getCachedUrl(asset: OfficeAssetType): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(LS_PREFIX + asset);
+export const VARIANT_LABELS: Record<AssetVariant, string> = {
+  1: "NO",
+  2: "NE",
+  3: "SE",
+  4: "SO",
+};
+
+// Cached variant URLs per asset: Record<asset, Record<variant, url>>
+type VariantCache = Partial<Record<OfficeAssetType, Partial<Record<AssetVariant, string>>>>;
+
+const LS_KEY = "office_asset_variants_v3";
+
+function getCache(): VariantCache {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) ?? "{}") as VariantCache;
+  } catch {
+    return {};
+  }
 }
 
-function setCachedUrl(asset: OfficeAssetType, url: string) {
+function setCache(cache: VariantCache) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(LS_PREFIX + asset, url);
+  localStorage.setItem(LS_KEY, JSON.stringify(cache));
 }
 
-/**
- * Fetch or generate one editor asset and return its public URL.
- * Uses localStorage as a first-level cache to avoid API calls on every page load.
- */
-export async function fetchOrGenerateAsset(
+function getCachedVariantUrl(asset: OfficeAssetType, variant: AssetVariant): string | null {
+  return getCache()[asset]?.[variant] ?? null;
+}
+
+function setCachedVariantUrl(asset: OfficeAssetType, variant: AssetVariant, url: string) {
+  const cache = getCache();
+  cache[asset] = { ...cache[asset], [variant]: url };
+  setCache(cache);
+}
+
+// ─── Fetch all known variants for an asset from the API ──────────────────────
+export async function fetchAssetVariants(
+  asset: OfficeAssetType
+): Promise<Partial<Record<AssetVariant, string>>> {
+  const res = await fetch(`/api/ai/generate-office-asset?asset=${asset}`);
+  if (!res.ok) return {};
+  const data = await res.json() as { variants: Partial<Record<AssetVariant, string | null>> };
+  const result: Partial<Record<AssetVariant, string>> = {};
+  for (const [k, url] of Object.entries(data.variants ?? {})) {
+    if (url) {
+      const v = Number(k) as AssetVariant;
+      result[v] = url;
+      setCachedVariantUrl(asset, v, url);
+    }
+  }
+  return result;
+}
+
+// ─── Generate (or fetch cached) a specific variant ───────────────────────────
+export async function fetchOrGenerateVariant(
   asset: OfficeAssetType,
+  variant: AssetVariant,
   force = false
 ): Promise<string | null> {
-  // Return localStorage cache immediately unless force=true
   if (!force) {
-    const cached = getCachedUrl(asset);
+    const cached = getCachedVariantUrl(asset, variant);
     if (cached) return cached;
   }
 
@@ -43,23 +84,19 @@ export async function fetchOrGenerateAsset(
       const res = await fetch("/api/ai/generate-office-asset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset, force }),
+        body: JSON.stringify({ asset, variant, force }),
       });
 
-      const data = await res.json();
+      const data = await res.json() as { url?: string; error?: string };
       if (data?.url) {
-        setCachedUrl(asset, data.url);
+        setCachedVariantUrl(asset, variant, data.url);
         return data.url;
       }
 
-      const message = typeof data?.error === "string" ? data.error : "Unknown asset generation error";
-      if (!message.includes("429") || attempt === 2) {
-        return null;
-      }
+      const message = typeof data?.error === "string" ? data.error : "Unknown error";
+      if (!message.includes("429") || attempt === 2) return null;
     } catch {
-      if (attempt === 2) {
-        return null;
-      }
+      if (attempt === 2) return null;
     }
 
     await new Promise((resolve) => window.setTimeout(resolve, 1200 * (attempt + 1)));
@@ -68,9 +105,7 @@ export async function fetchOrGenerateAsset(
   return null;
 }
 
-/**
- * Load one URL into an HTMLImageElement for Konva.
- */
+// ─── Load a URL into an HTMLImageElement ─────────────────────────────────────
 export function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new window.Image();
@@ -83,22 +118,22 @@ export function loadImage(url: string): Promise<HTMLImageElement | null> {
 
 export async function generateAndLoadAsset(
   asset: OfficeAssetType,
+  variant: AssetVariant = 1,
   force = false
 ): Promise<HTMLImageElement | null> {
-  const url = await fetchOrGenerateAsset(asset, force);
+  const url = await fetchOrGenerateVariant(asset, variant, force);
   if (!url) return null;
   return loadImage(url);
 }
 
 export async function generateAndLoadAssetWithUrl(
   asset: OfficeAssetType,
+  variant: AssetVariant = 1,
   force = false
 ): Promise<{ url: string; image: HTMLImageElement } | null> {
-  const url = await fetchOrGenerateAsset(asset, force);
+  const url = await fetchOrGenerateVariant(asset, variant, force);
   if (!url) return null;
-
   const image = await loadImage(url);
   if (!image) return null;
-
   return { url, image };
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAgentBySlug, updateAgentFields } from "@/lib/services/agentService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -9,12 +10,22 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { agentName, agentRole, department, traits } = body as {
+  const { agentName, agentRole, department, traits, slug } = body as {
     agentName?: string;
     agentRole?: string;
     department: string;
     traits: { trait: string; label: string; emoji: string; role: "primary" | "nuance" | "secondary" }[];
+    slug?: string;
   };
+
+  // Return cached bio if available
+  if (slug) {
+    const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "");
+    const agent = await getAgentBySlug(safeSlug);
+    if (agent?.personality_bio) {
+      return NextResponse.json({ bio: agent.personality_bio, cached: true });
+    }
+  }
 
   if (!traits || traits.length === 0) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

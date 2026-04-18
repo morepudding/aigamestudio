@@ -4,7 +4,7 @@ import { PNG } from "pngjs";
 
 export const maxDuration = 120;
 
-// ─── Asset types ─────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 export type OfficeAssetType =
   | "studio_empty"
   | "desk_workstation"
@@ -17,38 +17,88 @@ export type OfficeAssetType =
   | "water_fountain"
   | "coffee_machine";
 
-type AssetType = OfficeAssetType;
+// Variant 1 = north-west (default), 2 = north-east, 3 = south-east, 4 = south-west
+export type AssetVariant = 1 | 2 | 3 | 4;
 
-// ─── Pixel art prompts per asset ─────────────────────────────────────────────
-const PROMPTS: Record<AssetType, string> = {
-  studio_empty: "isometric pixel art, brand-new empty indie game studio, bare concrete floor, exposed brick walls, large windows with morning light, no furniture, 16-bit style, transparent background, no white background",
-  desk_workstation: "isometric pixel art, wooden office desk with computer monitor, keyboard and mouse, 16-bit style, transparent background, no white background",
-  chair_office: "isometric pixel art, ergonomic office chair with wheels and soft dark fabric, 16-bit style, transparent background, no white background",
-  plant_green_1: "isometric pixel art, potted green monstera plant with broad leaves, 16-bit style, transparent background, no white background",
-  plant_green_2: "isometric pixel art, potted green snake plant with tall upright leaves, 16-bit style, transparent background, no white background",
-  plant_green_3: "isometric pixel art, potted green fern plant with dense cascading leaves, 16-bit style, transparent background, no white background",
-  cabinet_storage: "isometric pixel art, metal office storage cabinet with closed doors, 16-bit style, transparent background, no white background",
-  trash_can: "isometric pixel art, small office trash bin, simple and clean, 16-bit style, transparent background, no white background",
-  water_fountain: "isometric pixel art, office water cooler fountain with blue bottle, 16-bit style, transparent background, no white background",
-  coffee_machine: "isometric pixel art, office coffee machine on compact stand, 16-bit style, transparent background, no white background",
+const VARIANT_LABELS: Record<AssetVariant, string> = {
+  1: "NO",
+  2: "NE",
+  3: "SE",
+  4: "SO",
 };
 
-const CUTOUT_STORAGE_VERSION = "v2";
+// ─── Direction suffixes injected into prompts ─────────────────────────────────
+const DIRECTION_SUFFIX: Record<AssetVariant, string> = {
+  1: "isometric view from north-west angle",
+  2: "isometric view from north-east angle, rotated 90 degrees clockwise",
+  3: "isometric view from south-east angle, seen from behind, rotated 180 degrees",
+  4: "isometric view from south-west angle, rotated 270 degrees clockwise",
+};
 
-// ─── Supabase admin client (service role for storage upserts) ────────────────
+// Instruction added when a reference image is provided (img2img)
+const IMG2IMG_PREFIX =
+  "Redraw the object in the reference image as isometric pixel art, 16-bit style, transparent background, no white background. Keep the same object, colors, and style.";
+
+// ─── Base prompts (variant 1 / NW view) ──────────────────────────────────────
+const BASE_PROMPTS: Record<OfficeAssetType, string> = {
+  studio_empty:
+    "isometric pixel art, brand-new empty indie game studio, bare concrete floor, exposed brick walls, large windows with morning light, no furniture, 16-bit style, transparent background, no white background",
+  desk_workstation:
+    "isometric pixel art, wooden office desk with computer monitor, keyboard and mouse, 16-bit style, transparent background, no white background",
+  chair_office:
+    "isometric pixel art, ergonomic office chair with wheels and soft dark fabric, 16-bit style, transparent background, no white background",
+  plant_green_1:
+    "isometric pixel art, potted green monstera plant with broad leaves, 16-bit style, transparent background, no white background",
+  plant_green_2:
+    "isometric pixel art, potted green snake plant with tall upright leaves, 16-bit style, transparent background, no white background",
+  plant_green_3:
+    "isometric pixel art, potted green fern plant with dense cascading leaves, 16-bit style, transparent background, no white background",
+  cabinet_storage:
+    "isometric pixel art, metal office storage cabinet with closed doors, 16-bit style, transparent background, no white background",
+  trash_can:
+    "isometric pixel art, small office trash bin, simple and clean, 16-bit style, transparent background, no white background",
+  water_fountain:
+    "isometric pixel art, office water cooler fountain with blue bottle, 16-bit style, transparent background, no white background",
+  coffee_machine:
+    "isometric pixel art, office coffee machine on compact stand, 16-bit style, transparent background, no white background",
+};
+
+const STORAGE_VERSION = "v3";
+const BUCKET = "office-assets";
+
+// ─── Supabase admin ───────────────────────────────────────────────────────────
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createClient(url, key);
 }
 
-/**
- * Generate an image via OpenRouter chat completions (Gemini 2.5 Flash Image).
- * Returns the image as an ArrayBuffer (binary PNG).
- */
-async function generateImage(prompt: string): Promise<ArrayBuffer> {
-  const apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTE_SERVICE_API_KEY;
+// ─── Storage path for a given asset + variant ────────────────────────────────
+function storagePath(asset: OfficeAssetType, variant: AssetVariant): string {
+  return `editor-assets/${asset}-v${variant}-${STORAGE_VERSION}.png`;
+}
+
+// ─── Generate image via OpenRouter ───────────────────────────────────────────
+// When referenceUrl is provided, uses img2img (image in messages content).
+async function generateImage(
+  prompt: string,
+  referenceUrl?: string
+): Promise<ArrayBuffer> {
+  const apiKey =
+    process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTE_SERVICE_API_KEY;
   if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY");
+
+  type ContentBlock =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } };
+
+  const content: ContentBlock[] = referenceUrl
+    ? [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: referenceUrl } },
+      ]
+    : [{ type: "text", text: prompt }];
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -58,7 +108,7 @@ async function generateImage(prompt: string): Promise<ArrayBuffer> {
     },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash-image",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content }],
     }),
   });
 
@@ -71,14 +121,13 @@ async function generateImage(prompt: string): Promise<ArrayBuffer> {
   const json = await res.json();
   const message = json?.choices?.[0]?.message;
 
-  // OpenRouter image models return images in message.images[] (not message.content)
-  const images: Array<{ type: string; image_url?: { url: string } }> = message?.images ?? [];
-  const content = message?.content;
+  const images: Array<{ type: string; image_url?: { url: string } }> =
+    message?.images ?? [];
+  const msgContent = message?.content;
 
   let imageUrl: string | undefined;
   let base64Data: string | undefined;
 
-  // 1. Check message.images (OpenRouter native format for Gemini image models)
   for (const block of images) {
     const url: string = block?.image_url?.url ?? "";
     if (url.startsWith("data:image")) {
@@ -89,16 +138,15 @@ async function generateImage(prompt: string): Promise<ArrayBuffer> {
     if (base64Data || imageUrl) break;
   }
 
-  // 2. Fallback: check message.content (array or string)
   if (!base64Data && !imageUrl) {
-    if (typeof content === "string") {
-      if (content.startsWith("data:image")) {
-        base64Data = content.split(",")[1];
-      } else if (content.startsWith("http")) {
-        imageUrl = content.trim();
+    if (typeof msgContent === "string") {
+      if (msgContent.startsWith("data:image")) {
+        base64Data = msgContent.split(",")[1];
+      } else if (msgContent.startsWith("http")) {
+        imageUrl = msgContent.trim();
       }
-    } else if (Array.isArray(content)) {
-      for (const block of content) {
+    } else if (Array.isArray(msgContent)) {
+      for (const block of msgContent) {
         if (block?.type === "image_url") {
           const url: string = block.image_url?.url ?? "";
           if (url.startsWith("data:image")) {
@@ -123,27 +171,25 @@ async function generateImage(prompt: string): Promise<ArrayBuffer> {
     return imgRes.arrayBuffer();
   }
 
-  console.error("[generate-office-asset] Unexpected response:", JSON.stringify(json).slice(0, 300));
+  console.error(
+    "[generate-office-asset] Unexpected response:",
+    JSON.stringify(json).slice(0, 300)
+  );
   throw new Error("No image data found in OpenRouter response");
 }
 
-/**
- * Remove background via BFS flood-fill from the image edges.
- * Pixels connected to the border that are "light/neutral" (the AI checkerboard or
- * white background) are made fully transparent. Pure algorithmic — no AI call.
- */
+// ─── Background removal ───────────────────────────────────────────────────────
 function removeBackground(imageBuffer: Buffer): Buffer {
   const png = PNG.sync.read(imageBuffer);
   const { width, height, data } = png;
 
-  const THRESHOLD = 185; // pixels with R,G,B all above this are background candidates
-
+  const THRESHOLD = 185;
   const idx = (x: number, y: number) => (y * width + x) * 4;
 
   const isBackground = (x: number, y: number): boolean => {
     const i = idx(x, y);
     const a = data[i + 3];
-    if (a < 10) return true; // already transparent
+    if (a < 10) return true;
     const r = data[i], g = data[i + 1], b = data[i + 2];
     return r > THRESHOLD && g > THRESHOLD && b > THRESHOLD;
   };
@@ -160,60 +206,137 @@ function removeBackground(imageBuffer: Buffer): Buffer {
     queue.push(x, y);
   };
 
-  // Seed from all 4 borders
-  for (let x = 0; x < width; x++) { enqueue(x, 0); enqueue(x, height - 1); }
-  for (let y = 0; y < height; y++) { enqueue(0, y); enqueue(width - 1, y); }
+  for (let x = 0; x < width; x++) {
+    enqueue(x, 0);
+    enqueue(x, height - 1);
+  }
+  for (let y = 0; y < height; y++) {
+    enqueue(0, y);
+    enqueue(width - 1, y);
+  }
 
   while (queue.length > 0) {
     const y = queue.pop()!;
     const x = queue.pop()!;
-    data[idx(x, y) + 3] = 0; // make transparent
-    enqueue(x + 1, y); enqueue(x - 1, y);
-    enqueue(x, y + 1); enqueue(x, y - 1);
+    data[idx(x, y) + 3] = 0;
+    enqueue(x + 1, y);
+    enqueue(x - 1, y);
+    enqueue(x, y + 1);
+    enqueue(x, y - 1);
   }
 
   return PNG.sync.write(png, { colorType: 6, filterType: 4 });
 }
 
-export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const asset = body?.asset as AssetType | undefined;
-  const forceRegenerate = body?.force === true;
+// ─── GET — list available variants for an asset ───────────────────────────────
+// Returns { asset, variants: { 1: url|null, 2: url|null, 3: url|null, 4: url|null } }
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const asset = searchParams.get("asset") as OfficeAssetType | null;
 
-  if (!asset || !(asset in PROMPTS)) {
+  if (!asset || !(asset in BASE_PROMPTS)) {
     return NextResponse.json(
-      { error: `Invalid asset. Must be one of: ${Object.keys(PROMPTS).join(", ")}` },
+      { error: `Invalid asset. Must be one of: ${Object.keys(BASE_PROMPTS).join(", ")}` },
       { status: 400 }
     );
   }
 
-  const storagePath = `editor-assets/${asset}-${CUTOUT_STORAGE_VERSION}.png`;
-  const bucket = "office-assets";
   const supabaseAdmin = getSupabaseAdmin();
+  const variants: Record<AssetVariant, string | null> = { 1: null, 2: null, 3: null, 4: null };
 
-  // ── Check cache in Supabase Storage (skip if force=true) ─────────────────
-  if (!forceRegenerate) {
-    const { data: existing } = await supabaseAdmin.storage.from(bucket).list("editor-assets", {
-      search: `${asset}-${CUTOUT_STORAGE_VERSION}.png`,
-      limit: 1,
-    });
+  for (const v of [1, 2, 3, 4] as AssetVariant[]) {
+    const path = storagePath(asset, v);
+    const { data: existing } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .list("editor-assets", { search: `${asset}-v${v}-${STORAGE_VERSION}.png`, limit: 1 });
+
     if (existing && existing.length > 0) {
-      const { data: urlData } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
-      return NextResponse.json({ asset, url: urlData.publicUrl, cached: true });
+      const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+      variants[v] = urlData.publicUrl;
     }
   }
 
-  // ── Generate base image via OpenRouter ────────────────────────────────────
+  return NextResponse.json({ asset, variants, labels: VARIANT_LABELS });
+}
+
+// ─── POST — generate one variant ─────────────────────────────────────────────
+// Body: { asset, variant: 1|2|3|4, force?: boolean }
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const asset = body?.asset as OfficeAssetType | undefined;
+  const variant = (body?.variant ?? 1) as AssetVariant;
+  const forceRegenerate = body?.force === true;
+
+  if (!asset || !(asset in BASE_PROMPTS)) {
+    return NextResponse.json(
+      { error: `Invalid asset. Must be one of: ${Object.keys(BASE_PROMPTS).join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  if (![1, 2, 3, 4].includes(variant)) {
+    return NextResponse.json({ error: "variant must be 1, 2, 3, or 4" }, { status: 400 });
+  }
+
+  const path = storagePath(asset, variant);
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // ── Cache check ───────────────────────────────────────────────────────────
+  if (!forceRegenerate) {
+    const { data: existing } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .list("editor-assets", {
+        search: `${asset}-v${variant}-${STORAGE_VERSION}.png`,
+        limit: 1,
+      });
+
+    if (existing && existing.length > 0) {
+      const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+      return NextResponse.json({
+        asset,
+        variant,
+        label: VARIANT_LABELS[variant],
+        url: urlData.publicUrl,
+        cached: true,
+      });
+    }
+  }
+
+  // ── Resolve reference image for img2img (variants 2/3/4 use variant 1) ────
+  let referenceUrl: string | undefined;
+  let prompt: string;
+
+  if (variant === 1) {
+    // Text-to-image for the base view
+    prompt = `${BASE_PROMPTS[asset]}, ${DIRECTION_SUFFIX[1]}`;
+  } else {
+    // img2img: fetch variant 1 URL if it exists in storage
+    const v1Path = storagePath(asset, 1);
+    const { data: v1Files } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .list("editor-assets", { search: `${asset}-v1-${STORAGE_VERSION}.png`, limit: 1 });
+
+    if (v1Files && v1Files.length > 0) {
+      const { data: v1UrlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(v1Path);
+      referenceUrl = v1UrlData.publicUrl;
+      prompt = `${IMG2IMG_PREFIX} ${DIRECTION_SUFFIX[variant]}`;
+    } else {
+      // Fallback to text-to-image if variant 1 not yet generated
+      prompt = `${BASE_PROMPTS[asset]}, ${DIRECTION_SUFFIX[variant]}`;
+    }
+  }
+
+  // ── Generate ──────────────────────────────────────────────────────────────
   let buffer: Buffer;
   try {
-    const ab = await generateImage(PROMPTS[asset]);
+    const ab = await generateImage(prompt, referenceUrl);
     buffer = Buffer.from(ab);
   } catch (err) {
     console.error("[generate-office-asset] Generation failed:", (err as Error).message);
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
   }
 
-  // ── Mandatory cutout pass before publication ─────────────────────────────
+  // ── Background removal ────────────────────────────────────────────────────
   try {
     buffer = removeBackground(buffer);
   } catch (err) {
@@ -222,56 +345,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Cutout failed: ${message}` }, { status: 502 });
   }
 
-  // ── Upload to Supabase Storage ────────────────────────────────────────────
+  // ── Upload ────────────────────────────────────────────────────────────────
   const { error: uploadError } = await supabaseAdmin.storage
-    .from(bucket)
-    .upload(storagePath, buffer, { contentType: "image/png", upsert: true });
+    .from(BUCKET)
+    .upload(path, buffer, { contentType: "image/png", upsert: true });
 
   if (uploadError) {
-    console.error("[generate-office-asset] Supabase upload error:", uploadError.message);
+    console.error("[generate-office-asset] Upload error:", uploadError.message);
     return NextResponse.json({ error: uploadError.message }, { status: 502 });
   }
 
-  const { data: urlData } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
-  return NextResponse.json({ asset, url: urlData.publicUrl + `?t=${Date.now()}`, cached: false });
+  const { data: urlData } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  return NextResponse.json({
+    asset,
+    variant,
+    label: VARIANT_LABELS[variant],
+    url: urlData.publicUrl + `?t=${Date.now()}`,
+    cached: false,
+  });
 }
 
+// ─── DELETE — clear all variants for all assets ───────────────────────────────
 export async function DELETE() {
-  const bucket = "office-assets";
   const supabaseAdmin = getSupabaseAdmin();
 
-  const collectPaths = async (folder: string): Promise<string[] | null> => {
-    const { data: files, error } = await supabaseAdmin.storage.from(bucket).list(folder, {
-      limit: 200,
-      sortBy: { column: "name", order: "asc" },
-    });
+  const { data: files, error } = await supabaseAdmin.storage.from(BUCKET).list("editor-assets", {
+    limit: 200,
+    sortBy: { column: "name", order: "asc" },
+  });
 
-    if (error) {
-      return null;
-    }
-
-    return (files ?? [])
-      .filter((file) => !!file.name && file.name !== ".emptyFolderPlaceholder")
-      .map((file) => `${folder}/${file.name}`);
-  };
-
-  const editorPaths = await collectPaths("editor-assets");
-  if (editorPaths === null) {
+  if (error) {
     return NextResponse.json({ error: "Unable to list editor-assets folder" }, { status: 502 });
   }
 
-  const legacyPaths = await collectPaths("sprites");
-  if (legacyPaths === null) {
-    return NextResponse.json({ error: "Unable to list sprites folder" }, { status: 502 });
-  }
-
-  const paths = [...editorPaths, ...legacyPaths];
+  const paths = (files ?? [])
+    .filter((f) => !!f.name && f.name !== ".emptyFolderPlaceholder")
+    .map((f) => `editor-assets/${f.name}`);
 
   if (paths.length === 0) {
     return NextResponse.json({ deleted: 0, message: "No office assets found" });
   }
 
-  const { error: removeError } = await supabaseAdmin.storage.from(bucket).remove(paths);
+  const { error: removeError } = await supabaseAdmin.storage.from(BUCKET).remove(paths);
   if (removeError) {
     return NextResponse.json({ error: removeError.message }, { status: 502 });
   }

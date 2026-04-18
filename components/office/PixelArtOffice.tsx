@@ -29,8 +29,12 @@ import {
 } from "lucide-react";
 import {
   generateAndLoadAssetWithUrl,
+  fetchAssetVariants,
+  fetchOrGenerateVariant,
   loadImage,
   type OfficeAssetType,
+  type AssetVariant,
+  VARIANT_LABELS,
 } from "@/lib/services/officeAssetService";
 
 const FALLBACK_CANVAS_W = 1280;
@@ -91,8 +95,12 @@ type StudioLayoutPayload = {
   }>;
 };
 
+// variants: per-asset map of variant → URL (already generated and stored)
+type AssetVariantsMap = Partial<Record<OfficeAssetType, Partial<Record<AssetVariant, string>>>>;
+
 type StudioConfigResponse = {
-  defaultAssets?: Partial<Record<OfficeAssetType, string>>;
+  defaultAssets?: Partial<Record<string, string>>;
+  variants?: AssetVariantsMap;
   layout?: StudioLayoutPayload | null;
 };
 
@@ -196,62 +204,96 @@ const ASSET_CATEGORIES: AssetCategory[] = [
   },
 ];
 
-function AssetThumb({
+// One variant slot (NO / NE / SE / SO)
+function VariantSlot({
+  variant,
   url,
-  label,
-  icon,
-  color,
-  onAdd,
-  onRegen,
   isLoading,
+  onPlace,
+  onGenerate,
 }: {
+  variant: AssetVariant;
   url?: string;
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-  onAdd: () => void;
-  onRegen: () => void;
   isLoading: boolean;
+  onPlace: () => void;
+  onGenerate: () => void;
 }) {
+  const label = VARIANT_LABELS[variant];
   return (
-    <div className={`relative group rounded-xl border ${color} overflow-hidden transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-indigo-500/10`}>
-      <div className="aspect-square w-full relative bg-black/20">
+    <div className="relative group rounded-lg border border-white/10 bg-black/20 overflow-hidden">
+      <div className="aspect-square w-full relative">
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={url}
-            alt={label}
-            className="w-full h-full object-contain p-1"
-          />
+          <img src={url} alt={label} className="w-full h-full object-contain p-0.5" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-white/20">
+          <div className="w-full h-full flex items-center justify-center text-white/15">
             {isLoading ? (
-              <Loader2 className="w-6 h-6 animate-spin text-indigo-400" />
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
             ) : (
-              icon
+              <span className="text-[10px] text-white/20 font-bold">{label}</span>
             )}
           </div>
         )}
-        <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        <button
-          onClick={onAdd}
-          disabled={isLoading}
-          className="absolute bottom-1 left-1 right-1 py-1 rounded-lg bg-indigo-500 text-white text-xs font-bold opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-400 disabled:opacity-50 flex items-center justify-center gap-1"
-        >
-          <Plus className="w-3 h-3" />
-          Ajouter
-        </button>
+        {/* Overlay actions */}
+        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 p-1">
+          {url ? (
+            <button
+              onClick={onPlace}
+              className="w-full py-0.5 rounded bg-indigo-500 text-white text-[10px] font-bold hover:bg-indigo-400 flex items-center justify-center gap-0.5"
+            >
+              <Plus className="w-2.5 h-2.5" /> Placer
+            </button>
+          ) : null}
+          <button
+            onClick={onGenerate}
+            disabled={isLoading}
+            className="w-full py-0.5 rounded bg-white/10 text-white/70 text-[10px] hover:bg-white/20 flex items-center justify-center gap-0.5 disabled:opacity-40"
+          >
+            <Wand2 className="w-2.5 h-2.5" /> {url ? "Regen" : "Générer"}
+          </button>
+        </div>
       </div>
-      <div className="px-2 py-1.5 flex items-center justify-between">
-        <span className="text-xs font-medium text-white/70 truncate">{label}</span>
-        <button
-          onClick={onRegen}
-          disabled={isLoading}
-          title="Régénérer"
-          className="ml-1 p-0.5 rounded text-white/30 hover:text-white/70 transition-colors disabled:opacity-30"
-        >
-          <Wand2 className="w-3 h-3" />
-        </button>
+      {/* Label */}
+      <div className="text-center py-0.5">
+        <span className="text-[9px] font-bold text-white/30 uppercase tracking-wider">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+// Asset card with 4 variant slots
+function AssetCard({
+  item,
+  variants,
+  loadingVariant,
+  onGenerate,
+  onPlace,
+}: {
+  item: AssetCatalogItem;
+  variants: Partial<Record<AssetVariant, string>>;
+  loadingVariant: string | null;
+  onGenerate: (variant: AssetVariant, force?: boolean) => void;
+  onPlace: (variant: AssetVariant) => void;
+}) {
+  return (
+    <div className={`rounded-xl border ${item.color} overflow-hidden`}>
+      {/* Header */}
+      <div className="px-2 py-1.5 flex items-center gap-1.5">
+        <span className="opacity-60">{item.icon}</span>
+        <span className="text-xs font-semibold text-white/80 truncate">{item.label}</span>
+      </div>
+      {/* 2×2 variant grid */}
+      <div className="px-2 pb-2 grid grid-cols-2 gap-1">
+        {([1, 2, 3, 4] as AssetVariant[]).map((v) => (
+          <VariantSlot
+            key={v}
+            variant={v}
+            url={variants[v]}
+            isLoading={loadingVariant === `${item.type}_v${v}`}
+            onPlace={() => onPlace(v)}
+            onGenerate={() => onGenerate(v)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -348,6 +390,10 @@ export function PixelArtOffice() {
   const [studioImage, setStudioImage] = useState<HTMLImageElement | null>(null);
   const [studioAssetUrl, setStudioAssetUrl] = useState<string | null>(null);
   const [defaultAssetUrls, setDefaultAssetUrls] = useState<Partial<Record<OfficeAssetType, string>>>({});
+  // Stored variants per asset (from Supabase via studio-config)
+  const [assetVariants, setAssetVariants] = useState<AssetVariantsMap>({});
+  // Which variant slot is currently generating: `${assetType}_v${variant}`
+  const [loadingVariant, setLoadingVariant] = useState<string | null>(null);
   const [assets, setAssets] = useState<OfficeAssetInstance[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
@@ -418,7 +464,8 @@ export function PixelArtOffice() {
       const config = (await configRes.json()) as StudioConfigResponse;
 
       const defaults = config.defaultAssets ?? {};
-      setDefaultAssetUrls(defaults);
+      setDefaultAssetUrls(defaults as Partial<Record<OfficeAssetType, string>>);
+      setAssetVariants(config.variants ?? {});
 
       if (config.layout) {
         await restoreLayout(config.layout);
@@ -478,6 +525,66 @@ export function PixelArtOffice() {
     setStatus("ready");
   };
 
+  // Place an asset on the canvas from a specific variant URL
+  const placeAssetFromUrl = (assetType: PlaceableOfficeAssetType, sourceUrl: string, image: HTMLImageElement) => {
+    const placement = ASSET_PLACEMENT[assetType] ?? {
+      idPrefix: "asset",
+      baseSize: DEFAULT_ASSET_SIZE,
+      errorMessage: "",
+    };
+    const newAsset: OfficeAssetInstance = {
+      id: `${placement.idPrefix}-${Date.now()}`,
+      type: assetType,
+      sourceUrl,
+      image,
+      x: Math.round(canvasSize.width / 2 - placement.baseSize / 2),
+      y: Math.round(canvasSize.height / 2 - placement.baseSize / 2),
+      width: placement.baseSize,
+      height: placement.baseSize,
+    };
+    setAssets((prev) => [...prev, newAsset]);
+    setSelectedAssetId(newAsset.id);
+  };
+
+  // Generate (or fetch cached) a variant and optionally place it on canvas
+  const generateVariant = async (
+    assetType: PlaceableOfficeAssetType,
+    variant: AssetVariant,
+    place = false,
+    force = false
+  ) => {
+    const variantKey = `${assetType}_v${variant}`;
+    setLoadingVariant(variantKey);
+    setErrorMessage(null);
+
+    const url = await fetchOrGenerateVariant(assetType, variant, force);
+
+    if (!url) {
+      setLoadingVariant(null);
+      setErrorMessage(`Impossible de générer la variante ${VARIANT_LABELS[variant]} pour ${assetType}.`);
+      return;
+    }
+
+    // Persist to Supabase
+    void fetch("/api/office/studio-config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "asset-variant", assetType, variant, url }),
+    });
+
+    setAssetVariants((prev) => ({
+      ...prev,
+      [assetType]: { ...prev[assetType], [variant]: url },
+    }));
+
+    setLoadingVariant(null);
+
+    if (place) {
+      const image = await loadImage(url);
+      if (image) placeAssetFromUrl(assetType, url, image);
+    }
+  };
+
   const loadCatalogAsset = async (assetType: PlaceableOfficeAssetType, force = false) => {
     const placement = ASSET_PLACEMENT[assetType] ?? {
       idPrefix: "asset",
@@ -493,16 +600,28 @@ export function PixelArtOffice() {
     let sourceUrl = "";
     let image: HTMLImageElement | null = null;
 
-    if (!force && defaultAssetUrls[assetType]) {
-      sourceUrl = defaultAssetUrls[assetType] ?? "";
+    // Use existing variant 1 if available
+    const v1Url = assetVariants[assetType]?.[1] ?? defaultAssetUrls[assetType];
+    if (!force && v1Url) {
+      sourceUrl = v1Url;
       image = await loadImage(sourceUrl);
     }
 
     if (!image) {
-      const generated = await generateAndLoadAssetWithUrl(assetType, force);
+      const generated = await generateAndLoadAssetWithUrl(assetType, 1, force);
       if (generated) {
         image = generated.image;
         sourceUrl = generated.url;
+        // Persist as variant 1
+        void fetch("/api/office/studio-config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "asset-variant", assetType, variant: 1, url: sourceUrl }),
+        });
+        setAssetVariants((prev) => ({
+          ...prev,
+          [assetType]: { ...prev[assetType], 1: sourceUrl },
+        }));
       }
     }
 
@@ -533,7 +652,6 @@ export function PixelArtOffice() {
 
   const updateSelectedAssetSize = (multiplier: number) => {
     if (!selectedAssetId) return;
-
     setAssets((prev) =>
       prev.map((asset) => {
         if (asset.id !== selectedAssetId) return asset;
@@ -732,7 +850,7 @@ export function PixelArtOffice() {
       <div className="flex gap-3 items-start">
 
         {/* ── Catalogue sidebar ── */}
-        <div className="w-52 shrink-0 space-y-2">
+        <div className="w-60 shrink-0 space-y-2">
           <p className="text-xs font-bold text-white/30 uppercase tracking-widest px-1">Catalogue</p>
 
           {ASSET_CATEGORIES.map((cat) => (
@@ -756,20 +874,25 @@ export function PixelArtOffice() {
               </button>
 
               {openCategories[cat.id] && (
-                <div className="px-2 pb-2 grid grid-cols-2 gap-1.5">
+                <div className="px-2 pb-2 space-y-2">
                   {cat.items.map((item) => (
-                    <AssetThumb
+                    <AssetCard
                       key={item.type}
-                      url={defaultAssetUrls[item.type]}
-                      label={item.label}
-                      icon={item.icon}
-                      color={item.color}
-                      isLoading={loadingAssetType === item.type}
-                      onAdd={() => {
-                        void loadCatalogAsset(item.type, false);
+                      item={item}
+                      variants={assetVariants[item.type] ?? {}}
+                      loadingVariant={loadingVariant}
+                      onGenerate={(variant, force) => {
+                        void generateVariant(item.type, variant, false, force);
                       }}
-                      onRegen={() => {
-                        void loadCatalogAsset(item.type, true);
+                      onPlace={(variant) => {
+                        const url = assetVariants[item.type]?.[variant];
+                        if (url) {
+                          void loadImage(url).then((image) => {
+                            if (image) placeAssetFromUrl(item.type, url, image);
+                          });
+                        } else {
+                          void generateVariant(item.type, variant, true);
+                        }
                       }}
                     />
                   ))}
