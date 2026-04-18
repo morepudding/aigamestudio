@@ -60,6 +60,33 @@ interface AgentDetail {
   personality_bio: string | null;
 }
 
+const PERSONALITY_BIO_CACHE_PREFIX = "personality-bio:v1:";
+
+function getPersonalityBioCacheKey(agent: Pick<AgentDetail, "slug" | "personality_primary" | "personality_nuance" | "personality_extras">): string {
+  const traitsFingerprint = [agent.personality_primary, agent.personality_nuance, agent.personality_extras ?? ""].join("|");
+  return `${PERSONALITY_BIO_CACHE_PREFIX}${agent.slug}:${traitsFingerprint}`;
+}
+
+function readPersonalityBioFromLocalCache(agent: Pick<AgentDetail, "slug" | "personality_primary" | "personality_nuance" | "personality_extras">): string | null {
+  try {
+    return localStorage.getItem(getPersonalityBioCacheKey(agent));
+  } catch {
+    return null;
+  }
+}
+
+function writePersonalityBioToLocalCache(
+  agent: Pick<AgentDetail, "slug" | "personality_primary" | "personality_nuance" | "personality_extras">,
+  bio: string
+) {
+  if (!bio) return;
+  try {
+    localStorage.setItem(getPersonalityBioCacheKey(agent), bio);
+  } catch {
+    // Ignore storage quota / privacy mode failures
+  }
+}
+
 
 
 const memoryTypeConfig: Record<MemoryType, { icon: React.ElementType; label: string; color: string }> = {
@@ -215,7 +242,15 @@ export default function AgentDetailPage() {
         if (agentData.personality_bio) {
           // Use cached bio — no LLM call needed
           setPersonalityBio(agentData.personality_bio);
+          writePersonalityBioToLocalCache(agentData, agentData.personality_bio);
         } else {
+          const localCachedBio = readPersonalityBioFromLocalCache(agentData);
+          if (localCachedBio) {
+            setPersonalityBio(localCachedBio);
+            return;
+          }
+
+          setPersonalityBio("");
           // Generate and cache for next time
           fetchPersonalityPhrases(agentData);
         }
@@ -262,7 +297,9 @@ export default function AgentDetailPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setPersonalityBio(data.bio ?? "");
+        const bio = data.bio ?? "";
+        setPersonalityBio(bio);
+        writePersonalityBioToLocalCache(agentData, bio);
       }
     } catch {
       // silently fail — UI degrades to badges

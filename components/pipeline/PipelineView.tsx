@@ -41,6 +41,7 @@ function ConceptPipelineView({ projectId, phase }: PipelineViewProps) {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [runningAll, setRunningAll] = useState(false);
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,9 +70,16 @@ function ConceptPipelineView({ projectId, phase }: PipelineViewProps) {
 
   const handleGenerate = async () => {
     setGenerating(true);
+    setActionError(null);
     try {
-      await fetch(`/api/pipeline/${projectId}/generate`, { method: "POST" });
+      const res = await fetch(`/api/pipeline/${projectId}/generate`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Impossible de generer le pipeline");
+      }
       await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
       setGenerating(false);
     }
@@ -180,6 +188,19 @@ function ConceptPipelineView({ projectId, phase }: PipelineViewProps) {
             )}
             {generating ? "Génération en cours…" : "Générer le pipeline"}
           </button>
+        {actionError && (
+          <div className="mx-auto max-w-xl rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-left">
+            <p className="text-sm text-amber-200">{actionError}</p>
+            {actionError.includes("GDD") && (
+              <Link
+                href={`/brainstorming/${projectId}/gdd-review`}
+                className="mt-2 inline-block text-xs font-semibold text-amber-100 underline underline-offset-2 hover:text-white"
+              >
+                Ouvrir la revue GDD
+              </Link>
+            )}
+          </div>
+        )}
       </div>
     );
   }

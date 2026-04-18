@@ -2,6 +2,47 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAgentBySlug, updateAgentFields } from "@/lib/services/agentService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const PERSONALITY_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+
+type PersonalityCacheEntry = {
+  bio: string;
+  expiresAt: number;
+};
+
+const globalCache = globalThis as typeof globalThis & {
+  __personalityPhrasesCache?: Map<string, PersonalityCacheEntry>;
+};
+
+const personalityPhrasesCache = globalCache.__personalityPhrasesCache ?? new Map<string, PersonalityCacheEntry>();
+globalCache.__personalityPhrasesCache = personalityPhrasesCache;
+
+function getCacheKey(params: { slug?: string; department?: string; traits: { trait: string; role: "primary" | "nuance" | "secondary" }[] }) {
+  if (params.slug) return `slug:${params.slug}`;
+
+  const normalizedTraits = [...params.traits]
+    .sort((a, b) => `${a.role}:${a.trait}`.localeCompare(`${b.role}:${b.trait}`))
+    .map((t) => `${t.role}:${t.trait}`)
+    .join("|");
+
+  return `dept:${params.department ?? "unknown"}|traits:${normalizedTraits}`;
+}
+
+function getFromMemoryCache(key: string): string | null {
+  const entry = personalityPhrasesCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    personalityPhrasesCache.delete(key);
+    return null;
+  }
+  return entry.bio;
+}
+
+function setMemoryCache(key: string, bio: string) {
+  personalityPhrasesCache.set(key, {
+    bio,
+    expiresAt: Date.now() + PERSONALITY_CACHE_TTL_MS,
+  });
+}
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.OPEN_ROUTE_SERVICE_API_KEY;
@@ -18,22 +59,32 @@ export async function POST(req: NextRequest) {
     slug?: string;
   };
 
+  const normalizedTraits = Array.isArray(traits) ? traits : [];
+
+  const safeSlug = slug ? slug.replace(/[^a-z0-9_-]/gi, "") : undefined;
+  const cacheKey = getCacheKey({ slug: safeSlug, department, traits: normalizedTraits });
+
+  const memoryCachedBio = getFromMemoryCache(cacheKey);
+  if (memoryCachedBio) {
+    return NextResponse.json({ bio: memoryCachedBio, cached: true, cache: "memory" });
+  }
+
   // Return cached bio if available
-  if (slug) {
-    const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "");
+  if (safeSlug) {
     const agent = await getAgentBySlug(safeSlug);
     if (agent?.personality_bio) {
+      setMemoryCache(cacheKey, agent.personality_bio);
       return NextResponse.json({ bio: agent.personality_bio, cached: true });
     }
   }
 
-  if (!traits || traits.length === 0) {
+  if (normalizedTraits.length === 0) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const primary = traits.find((t) => t.role === "primary");
-  const nuance = traits.find((t) => t.role === "nuance");
-  const secondaries = traits.filter((t) => t.role === "secondary");
+  const primary = normalizedTraits.find((t) => t.role === "primary");
+  const nuance = normalizedTraits.find((t) => t.role === "nuance");
+  const secondaries = normalizedTraits.filter((t) => t.role === "secondary");
 
   const traitsDesc = [
     primary ? `Trait dominant : ${primary.label}` : "",
@@ -87,9 +138,12 @@ Réponds UNIQUEMENT avec le texte brut — aucun JSON, aucun titre, aucun commen
     const data = await response.json();
     const bio: string = (data.choices?.[0]?.message?.content ?? "").trim();
 
+    if (bio) {
+      setMemoryCache(cacheKey, bio);
+    }
+
     // Persist to DB so next page load uses the cache
-    if (slug && bio) {
-      const safeSlug = slug.replace(/[^a-z0-9_-]/gi, "");
+    if (safeSlug && bio) {
       await updateAgentFields(safeSlug, { personality_bio: bio }).catch(() => {
         // Non-blocking — cache miss is acceptable
       });
