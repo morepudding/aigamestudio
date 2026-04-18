@@ -106,7 +106,8 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: getError.message }, { status: 500 });
       }
 
-      const defaults = parseJsonSafe<Partial<Record<OfficeAssetType, string>>>(existing?.value, {});
+      const existingRow = existing as { value: string } | null;
+      const defaults = parseJsonSafe<Partial<Record<OfficeAssetType, string>>>(existingRow?.value, {});
       defaults[body.assetType] = body.url;
 
       const { error: saveError } = await supabaseAdmin.from("studio_settings").upsert(
