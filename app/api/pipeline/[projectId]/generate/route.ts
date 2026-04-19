@@ -60,6 +60,23 @@ export async function POST(
     }
 
     if (project.status === "in-dev") {
+      // Gate: courseInfo must be complete before generating dev waves
+      const ci = project.courseInfo;
+      if (!ci || !ci.courseName || ci.mechanics.length === 0 || !ci.webEngine) {
+        return NextResponse.json(
+          {
+            error:
+              "Les informations du cours sont incomplètes. Renseigne le nom du cours, les mécaniques et l'engine web avant de générer les tâches.",
+            missingFields: {
+              courseName: !ci?.courseName,
+              mechanics: !ci || ci.mechanics.length === 0,
+              webEngine: !ci?.webEngine,
+            },
+          },
+          { status: 409 }
+        );
+      }
+
       const tasks = await generateDevWaves(projectId, project);
       return NextResponse.json({ tasks, phase: "in-dev" }, { status: 201 });
     }

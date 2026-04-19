@@ -18,8 +18,10 @@ import {
 } from "lucide-react";
 import { getTasksByWave, getPipelineProgress } from "@/lib/services/pipelineService";
 import type { Wave, PipelineTask } from "@/lib/types/task";
+import type { WaveReview } from "@/lib/services/waveReviewService";
 import ProgressBar from "./ProgressBar";
 import TaskReview from "./TaskReview";
+import WaveReviewPanel from "./WaveReviewPanel";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -446,6 +448,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [runningAll, setRunningAll] = useState(false);
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
+  const [waveReviews, setWaveReviews] = useState<Map<number, WaveReview>>(new Map());
   const [actionError, setActionError] = useState<string | null>(null);
   const [executionStatuses, setExecutionStatuses] = useState<Map<string, ExecutionStatus>>(
     new Map()
@@ -513,6 +516,26 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
       setWaves(wavesData);
       setProgress(progressData);
       setAgents(agentsRes ?? []);
+
+      // Load wave reviews for completed waves
+      const completedWaveNumbers = wavesData
+        .filter((w: Wave) => w.allCompleted && w.number > 0)
+        .map((w: Wave) => w.number);
+      if (completedWaveNumbers.length > 0) {
+        const reviews = await Promise.all(
+          completedWaveNumbers.map((n: number) =>
+            fetch(`/api/pipeline/${projectId}/wave-review?wave=${n}`)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((d) => (d?.review ? ([n, d.review] as [number, WaveReview]) : null))
+              .catch(() => null)
+          )
+        );
+        const reviewMap = new Map<number, WaveReview>();
+        for (const entry of reviews) {
+          if (entry) reviewMap.set(entry[0], entry[1]);
+        }
+        setWaveReviews(reviewMap);
+      }
 
       // Auto-start polling if tasks are running
       const hasRunning = wavesData
@@ -927,6 +950,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
             {waves.map((wave, i) => {
               const waveTitle =
                 wave.number === 0 ? "Pipeline de Conception" : `Wave ${wave.number}`;
+              const showCheckpoint = wave.allCompleted && wave.number > 0;
               return (
                 <div key={wave.number} className={i > 0 ? "pt-6 space-y-2" : "space-y-2"}>
                   {/* Wave header */}
@@ -961,6 +985,22 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
                       />
                     ))}
                   </div>
+
+                  {/* Checkpoint visuel après chaque wave de dev terminée */}
+                  {showCheckpoint && (
+                    <WaveReviewPanel
+                      projectId={projectId}
+                      waveNumber={wave.number}
+                      review={waveReviews.get(wave.number) ?? null}
+                      onReviewCreated={(review) => {
+                        setWaveReviews((prev) => new Map(prev).set(wave.number, review));
+                      }}
+                      onDecision={(review) => {
+                        setWaveReviews((prev) => new Map(prev).set(wave.number, review));
+                        load();
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}

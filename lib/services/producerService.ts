@@ -379,14 +379,42 @@ async function syncConceptTaskDeliverable(
 // Agent assignment
 // ============================================================
 
-function pickAgent(department: string, agents: Agent[]): Agent | null {
+function pickAgent(department: string, agents: Agent[], taskTitle?: string): Agent | null {
   const deptAgents = agents.filter(
     (a) => a.department === department && a.status === "active"
   );
   if (deptAgents.length === 0) return null;
   // Prefer non-system agents first (real team members)
-  const nonSystem = deptAgents.filter((a) => !(a as Agent & { is_system_agent?: boolean }).is_system_agent);
-  return nonSystem.length > 0 ? nonSystem[0] : deptAgents[0];
+  const candidates = deptAgents.filter((a) => !(a as Agent & { is_system_agent?: boolean }).is_system_agent);
+  const pool = candidates.length > 0 ? candidates : deptAgents;
+
+  // For programming department: match by specialization keywords if a task title is provided
+  if (department === "programming" && taskTitle) {
+    const titleLower = taskTitle.toLowerCase();
+    const SPEC_KEYWORDS: Record<string, string[]> = {
+      gameplay: ["gameplay", "mécanique", "contrôle", "physique", "jeu", "player", "level"],
+      engine: ["moteur", "engine", "perf", "rendu", "shader", "optimis", "profil"],
+      backend: ["backend", "api", "base de données", "serveur", "auth", "supabase", "rest"],
+      "ui-tech": ["ui", "interface", "front", "design", "composant", "layout", "css"],
+      devops: ["deploy", "build", "ci", "cd", "pipeline", "infra", "docker"],
+    };
+
+    for (const [specId, keywords] of Object.entries(SPEC_KEYWORDS)) {
+      if (keywords.some((kw) => titleLower.includes(kw))) {
+        const specMatch = pool.find((a) => (a as Agent & { specialization?: string }).specialization === specId);
+        if (specMatch) return specMatch;
+      }
+    }
+  }
+
+  // Prefer leads, then confirmés, then juniors
+  const byPosition = (a: Agent) => {
+    const pos = (a as Agent & { position?: string }).position;
+    if (pos === "lead") return 0;
+    if (pos === "confirmé") return 1;
+    return 2;
+  };
+  return pool.sort((a, b) => byPosition(a) - byPosition(b))[0];
 }
 
 // ============================================================
@@ -418,7 +446,7 @@ export async function generateConceptPipeline(project: Project): Promise<Pipelin
   const createdTasks: PipelineTask[] = [];
 
   for (const doc of CONCEPT_DOCS) {
-    const assignedAgent = pickAgent(doc.agentDepartment, agents);
+    const assignedAgent = pickAgent(doc.agentDepartment, agents, doc.title);
     const dependsOn: string[] =
       createdTasks.length > 0 ? [createdTasks[createdTasks.length - 1].id] : [];
     const isGddTask = doc.sortOrder === 1;
@@ -858,12 +886,13 @@ RÈGLES :
 - Génère entre 3 et 6 tâches maximum
 - Les tâches de cette wave doivent être parallélisables entre elles
 - Ne recrée pas les foundations déjà terminées
-- Priorise le vrai core loop de First Light : énergie éphémère, dépense, production, automatisation, UI de progression
+- Priorise le vrai core loop du jeu tel que défini dans le GDD et la Tech Spec
 - Chaque tâche doit référencer un backlog_ref existant dans le backlog
 - Assigne chaque tâche à l'agent le plus pertinent (slug exact ou null)
 - deliverable_type doit être STRICTEMENT l'une de ces valeurs : "code", "markdown", "json", "config", "repo-init"
 - deliverable_path doit pointer vers un fichier plausible du repo actuel
 - context_files doit lister uniquement des fichiers existants et utiles
+- INTERDIT : générer une tâche pour un système non mentionné dans la Tech Spec comme "à implémenter". Si un système est évoqué dans le GDD mais absent de la Tech Spec, ignore-le pour cette wave.
 
 Réponds UNIQUEMENT en JSON strict, sans texte avant ni après :
 {
@@ -912,6 +941,8 @@ RÈGLES :
 - deliverable_type doit être STRICTEMENT l'une de ces valeurs : "code", "markdown", "json", "config", "repo-init"
 - Chaque tâche doit spécifier le fichier de sortie (deliverable_path)
 - depends_on_refs : liste des backlog_ref dont cette tâche dépend (ex: ["CORE-001", "SYS-002"]). Vide pour les tâches de wave 1.
+- INTERDIT : générer une tâche pour un système non mentionné dans le backlog. Chaque tâche doit avoir un backlog_ref valide.
+- INTERDIT : générer des tâches d'intégration (API externe, postMessage, VN, etc.) avant que le core gameplay soit dans le backlog et la tech-spec.
 
 Réponds UNIQUEMENT en JSON strict, sans texte avant ni après :
 {

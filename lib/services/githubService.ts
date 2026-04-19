@@ -387,6 +387,64 @@ export async function listFiles(
   }
 }
 
+// ============================================================
+// GitHub Pages
+// ============================================================
+
+/**
+ * Active GitHub Pages sur la branche main du repo.
+ * Idempotent : si Pages est déjà actif, retourne l'URL existante.
+ * Retourne l'URL publique du mini-jeu.
+ */
+export async function enableGithubPages(repoName: string): Promise<string> {
+  const octokit = getOctokit();
+
+  // Vérifier si Pages est déjà actif
+  try {
+    const { data } = await octokit.repos.getPages({
+      owner: GITHUB_OWNER,
+      repo: repoName,
+    });
+    return data.html_url ?? "";
+  } catch {
+    // Pages non actif — on l'active
+  }
+
+  await octokit.repos.createPagesSite({
+    owner: GITHUB_OWNER,
+    repo: repoName,
+    source: { branch: "main", path: "/" },
+  });
+
+  // L'URL est prévisible même avant que le build soit prêt
+  return `https://${GITHUB_OWNER}.github.io/${repoName}/`;
+}
+
+/**
+ * Attend que GitHub Pages ait terminé son déploiement.
+ * Poll toutes les 5s jusqu'à ce que l'URL réponde avec un 2xx ou timeout (3 min).
+ * Retourne l'URL finale.
+ */
+export async function waitForPagesDeployment(
+  pagesUrl: string,
+  timeoutMs = 180_000
+): Promise<{ ready: boolean; url: string }> {
+  const deadline = Date.now() + timeoutMs;
+  const interval = 5_000;
+
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(pagesUrl, { method: "HEAD" });
+      if (res.ok) return { ready: true, url: pagesUrl };
+    } catch {
+      // Pas encore prêt
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+
+  return { ready: false, url: pagesUrl };
+}
+
 function scoreSnapshotPath(path: string): number {
   if (path === "README.md") return 100;
   if (path === "docs/data-arch.md") return 95;

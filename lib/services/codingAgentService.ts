@@ -129,7 +129,8 @@ function buildSystemPrompt(
   project: Project,
   task: PipelineTask,
   docs: { gdd: string | null; techSpec: string | null; dataArch: string | null },
-  contextFiles: { path: string; content: string }[]
+  contextFiles: { path: string; content: string }[],
+  skillPrompt?: string | null
 ): string {
   const docsBlock = [
     docs.gdd && `=== GAME DESIGN DOCUMENT ===\n${docs.gdd}`,
@@ -148,6 +149,11 @@ function buildSystemPrompt(
 
   const backlogLine = task.backlogRef ? `\nRéférence backlog : ${task.backlogRef}` : "";
 
+  // Bloc prompt compétence — injecté uniquement s'il existe (post-mortem validé)
+  const skillBlock = skillPrompt
+    ? `\n=== RÈGLES COMPÉTENCE (issues des post-mortems précédents) ===\n${skillPrompt}\n`
+    : "";
+
   return `Tu es un développeur expert ${project.engine} dans un studio de jeu vidéo indépendant.
 
 PROJET : "${project.title}"
@@ -157,7 +163,7 @@ Moteur : ${project.engine} | Genre : ${project.genre} | Plateformes : ${project.
 ${docsBlock}
 
 ${contextBlock}
-
+${skillBlock}
 OUTILS DISPONIBLES :
 - read_file(path) : lire un fichier du repo
 - write_file(path, content) : écrire un fichier dans le repo
@@ -184,7 +190,8 @@ export async function executeCodeTask(
   task: PipelineTask,
   project: Project,
   docs: { gdd: string | null; techSpec: string | null; dataArch: string | null },
-  contextFiles: { path: string; content: string }[]
+  contextFiles: { path: string; content: string }[],
+  skillPrompt?: string | null
 ): Promise<CodingResult> {
   if (!project.githubRepoName) {
     throw new Error("Project has no GitHub repo");
@@ -202,7 +209,7 @@ export async function executeCodeTask(
   const messages: AgentMessage[] = [
     {
       role: "system",
-      content: buildSystemPrompt(project, task, docs, contextFiles),
+      content: buildSystemPrompt(project, task, docs, contextFiles, skillPrompt),
     },
     {
       role: "user",

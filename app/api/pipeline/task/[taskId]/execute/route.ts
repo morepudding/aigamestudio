@@ -9,6 +9,7 @@ import { normalizeMarkdownDeliverable, unwrapCodeFence } from "@/lib/utils";
 import { getSessionByProject } from "@/lib/services/brainstormingService";
 import { reviewWave, isWaveFullyCompleted } from "@/lib/services/waveReviewerService";
 import { getTasksByProject } from "@/lib/services/pipelineService";
+import { getActiveSkillPrompt } from "@/lib/services/agentSkillPromptService";
 
 // POST /api/pipeline/task/[taskId]/execute
 // Executes a task: calls DeepSeek, saves content to DB.
@@ -64,17 +65,19 @@ export async function POST(
     if (task.projectPhase === "in-dev") {
       // Load concept docs from GitHub for full context
       const repoName = project.githubRepoName ?? "";
-      const [gdd, techSpec, dataArch] = await Promise.all([
+      const [gdd, techSpec, dataArch, activeSkillPrompt] = await Promise.all([
         repoName ? getFileContent(repoName, "docs/gdd.md") : null,
         repoName ? getFileContent(repoName, "docs/tech-spec.md") : null,
         repoName ? getFileContent(repoName, "docs/data-arch.md") : null,
+        task.assignedAgentSlug ? getActiveSkillPrompt(task.assignedAgentSlug) : null,
       ]);
 
       const codingResult = await executeCodeTask(
         task,
         project,
         { gdd, techSpec, dataArch },
-        []
+        [],
+        activeSkillPrompt?.content ?? null
       );
 
       // Produced a structured result — map to the common shape

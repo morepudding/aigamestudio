@@ -7,6 +7,7 @@ import type {
   ProjectPhase,
   TaskStatus,
 } from "@/lib/types/task";
+import { getWaveReview } from "@/lib/services/waveReviewService";
 
 // ============================================================
 // DB row → TypeScript type helpers
@@ -338,16 +339,30 @@ export async function advancePipeline(projectId: string): Promise<void> {
     tasks.filter((t) => t.status === "completed").map((t) => t.id)
   );
 
+  // Collect wave numbers that require an approved review before unlocking
+  const waveNumbers = [...new Set(tasks.map((t) => t.waveNumber))].sort((a, b) => a - b);
+  const blockedWaves = new Set<number>();
+  for (const wave of waveNumbers) {
+    if (wave <= 1) continue;
+    const prevReview = await getWaveReview(projectId, wave - 1);
+    if (!prevReview || prevReview.status !== "approved") {
+      blockedWaves.add(wave);
+    }
+  }
+
   const toUnlock = tasks.filter(
     (t) =>
       t.status === "created" &&
+      !blockedWaves.has(t.waveNumber) &&
       t.dependsOn.length > 0 &&
       t.dependsOn.every((depId) => completedIds.has(depId))
   );
 
-  // Also unlock tasks with no dependencies that are still "created"
   const noDepCreated = tasks.filter(
-    (t) => t.status === "created" && t.dependsOn.length === 0
+    (t) =>
+      t.status === "created" &&
+      !blockedWaves.has(t.waveNumber) &&
+      t.dependsOn.length === 0
   );
 
   const allToReady = [...toUnlock, ...noDepCreated];
