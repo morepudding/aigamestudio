@@ -17,11 +17,10 @@ import {
 } from "@/lib/services/chatService";
 import {
   getAgentMemories,
-  formatMemoriesForPrompt,
-  formatPersonalMemories,
-  formatRecentTopics,
-  saveAgentMemories,
-  MemoryType,
+  buildMemoryContextState,
+  processExtractedMemories,
+  type ExtractedMemoryInput,
+  type MemoryType,
 } from "@/lib/services/memoryService";
 import { supabase } from "@/lib/supabase/client";
 import { MoodRing, type Mood } from "@/components/ui/MoodRing";
@@ -76,6 +75,7 @@ export function ChatPanel() {
   const [agentMemories, setAgentMemories] = useState<string>("");
   const [personalMems, setPersonalMems] = useState<string>("");
   const [recentTopics, setRecentTopics] = useState<string>("");
+  const [memoriesByType, setMemoriesByType] = useState<Record<string, string>>({});
   const [tierUnlock, setTierUnlock] = useState<{ tierLabel: string; newLevel: number } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevSlugRef = useRef<string | null>(null);
@@ -121,10 +121,11 @@ export function ChatPanel() {
         setAgent(agentData);
 
         const memories = await getAgentMemories(agentData.slug);
-        const formatted = formatMemoriesForPrompt(memories);
-        setAgentMemories(formatted);
-        setPersonalMems(formatPersonalMemories(memories));
-        setRecentTopics(formatRecentTopics(memories));
+        const memoryContext = buildMemoryContextState(memories);
+        setAgentMemories(memoryContext.promptMemories);
+        setPersonalMems(memoryContext.personalMemories);
+        setRecentTopics(memoryContext.recentTopics);
+        setMemoriesByType(memoryContext.memoriesByType);
 
         const conv = await initConversation(
           agentData.slug,
@@ -133,7 +134,7 @@ export function ChatPanel() {
           agentData.personality_nuance ?? "",
           agentData.role ?? "",
           agentData.backstory ?? "",
-          formatted
+          memoryContext.promptMemories
         );
         setConversation(conv);
       } catch {
@@ -309,30 +310,38 @@ export function ChatPanel() {
           { sender: "user", content },
           { sender: "agent", content: reply },
         ];
-        extractMemories(agent.name, agent.role, messagesForExtraction).then(
+        extractMemories(agent.name, agent.role, messagesForExtraction, memoriesByType).then(
           async (newMemories) => {
             if (newMemories.length > 0) {
-              await saveAgentMemories(
-                newMemories.map((m) => ({
-                  agent_slug: agentSlugAtSend,
-                  memory_type: m.type as MemoryType,
-                  content: m.content,
-                  source_conversation_id: conversationIdAtSend,
-                }))
-              );
+              const currentMemories = await getAgentMemories(agentSlugAtSend);
+              const extractedMemories: ExtractedMemoryInput[] = newMemories.map((memory) => ({
+                type: memory.type as MemoryType,
+                content: memory.content,
+                importance: memory.importance,
+              }));
+              const updated = await processExtractedMemories({
+                agentSlug: agentSlugAtSend,
+                agentName: agent.name,
+                agentRole: agent.role,
+                extractedMemories,
+                existingMemories: currentMemories,
+                sourceConversationId: conversationIdAtSend,
+              });
+
               // Only refresh memories if still on the same agent
               if (agentSlugAtSend === agent.slug) {
-                const updated = await getAgentMemories(agentSlugAtSend);
-                setAgentMemories(formatMemoriesForPrompt(updated));
-                setPersonalMems(formatPersonalMemories(updated));
-                setRecentTopics(formatRecentTopics(updated));
+                const memoryContext = buildMemoryContextState(updated);
+                setAgentMemories(memoryContext.promptMemories);
+                setPersonalMems(memoryContext.personalMemories);
+                setRecentTopics(memoryContext.recentTopics);
+                setMemoriesByType(memoryContext.memoriesByType);
               }
             }
           }
         );
       }
     },
-    [agent, conversation, agentMemories, personalMems, recentTopics]
+    [agent, conversation, agentMemories, memoriesByType, personalMems, recentTopics]
   );
 
 

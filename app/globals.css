@@ -197,6 +197,20 @@
 .typing-excited .typing-dot { animation: typing-excited 0.5s ease-in-out infinite; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   LPC PIXEL SPRITE — walk animation (steps through 9 frames on X axis)
+   background-position-x: 0 → -(8 × 128px) = -1024px  (128 = 64×2 scale)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes lpcWalk {
+  from { background-position-x: 0px; }
+  to   { background-position-x: -1024px; }
+}
+
+.lpc-walker {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    MOBILE RESPONSIVE — Safe areas & touch targets
    ═══════════════════════════════════════════════════════════════════════════ */
 

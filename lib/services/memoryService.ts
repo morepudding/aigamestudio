@@ -6,6 +6,35 @@ export type MemoryType =
   | "family" | "hobbies" | "dreams" | "social" | "fears"
   | "personal_event" | "topic_tracker";
 
+export interface ExtractedMemoryInput {
+  type: MemoryType;
+  content: string;
+  importance: number;
+}
+
+export interface MemoryContextState {
+  promptMemories: string;
+  personalMemories: string;
+  recentTopics: string;
+  memoriesByType: Record<string, string>;
+}
+
+const SHORT_TERM_MEMORY_TYPES: MemoryType[] = ["topic_tracker"];
+const SHORT_TERM_TOPIC_LIMIT = 8;
+const CONSOLIDATABLE_TYPES: MemoryType[] = [
+  "summary",
+  "decision",
+  "preference",
+  "progress",
+  "boss_profile",
+  "family",
+  "hobbies",
+  "dreams",
+  "social",
+  "fears",
+  "personal_event",
+];
+
 /**
  * Singleton types: only one entry per agent is kept.
  * When a new one is extracted, it replaces the old instead of appending.
@@ -21,6 +50,166 @@ export interface AgentMemory {
   source_conversation_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function normaliseMemoryContent(content: string): string {
+  return content
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isShortTermMemoryType(memoryType: MemoryType): boolean {
+  return SHORT_TERM_MEMORY_TYPES.includes(memoryType);
+}
+
+function isConsolidatableMemoryType(memoryType: MemoryType): boolean {
+  return CONSOLIDATABLE_TYPES.includes(memoryType);
+}
+
+function dedupeMemoryEntries(
+  existingMemories: AgentMemory[],
+  entries: {
+    agent_slug: string;
+    memory_type: MemoryType;
+    content: string;
+    importance?: number;
+    source_conversation_id?: string;
+  }[]
+) {
+  const existingKeys = new Set(
+    existingMemories.map((memory) => `${memory.memory_type}::${normaliseMemoryContent(memory.content)}`)
+  );
+  const seenKeys = new Set<string>();
+
+  return entries.filter((entry) => {
+    const normalised = normaliseMemoryContent(entry.content);
+    if (!normalised) return false;
+
+    const dedupeKey = `${entry.memory_type}::${normalised}`;
+
+    if (SINGLETON_TYPES.includes(entry.memory_type)) {
+      if (seenKeys.has(dedupeKey)) return false;
+      seenKeys.add(dedupeKey);
+      return true;
+    }
+
+    if (existingKeys.has(dedupeKey) || seenKeys.has(dedupeKey)) {
+      return false;
+    }
+
+    seenKeys.add(dedupeKey);
+    return true;
+  });
+}
+
+async function pruneShortTermMemories(agentSlug: string): Promise<void> {
+  const { data, error } = await supabase
+    .from("agent_memory")
+    .select("id")
+    .eq("agent_slug", agentSlug)
+    .eq("memory_type", "topic_tracker")
+    .order("created_at", { ascending: false });
+
+  if (error || !data || data.length <= SHORT_TERM_TOPIC_LIMIT) return;
+
+  const idsToDelete = data.slice(SHORT_TERM_TOPIC_LIMIT).map((row) => row.id);
+  if (idsToDelete.length === 0) return;
+
+  const { error: deleteError } = await supabase
+    .from("agent_memory")
+    .delete()
+    .in("id", idsToDelete);
+
+  if (deleteError) {
+    console.error("Failed to prune short-term memories:", deleteError.message);
+  }
+}
+
+async function requestMemoryConsolidation(
+  agentName: string,
+  agentRole: string,
+  memories: { type: MemoryType; content: string; importance?: number }[]
+): Promise<{ type: MemoryType; content: string; importance: number }[]> {
+  try {
+    const res = await fetch("/api/ai/consolidate-memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName, agentRole, memories }),
+    });
+    if (!res.ok) throw new Error("API error");
+    const data = await res.json();
+    return (data.consolidated ?? []) as { type: MemoryType; content: string; importance: number }[];
+  } catch {
+    return [];
+  }
+}
+
+export function buildMemoryContextState(memories: AgentMemory[]): MemoryContextState {
+  return {
+    promptMemories: formatMemoriesForPrompt(memories),
+    personalMemories: formatPersonalMemories(memories),
+    recentTopics: formatRecentTopics(memories),
+    memoriesByType: buildMemoriesByType(memories),
+  };
+}
+
+export async function processExtractedMemories(params: {
+  agentSlug: string;
+  agentName: string;
+  agentRole: string;
+  extractedMemories: ExtractedMemoryInput[];
+  existingMemories: AgentMemory[];
+  sourceConversationId?: string;
+}): Promise<AgentMemory[]> {
+  const { agentSlug, agentName, agentRole, extractedMemories, existingMemories, sourceConversationId } = params;
+
+  const filteredEntries = dedupeMemoryEntries(
+    existingMemories,
+    extractedMemories.map((memory) => ({
+      agent_slug: agentSlug,
+      memory_type: memory.type,
+      content: memory.content,
+      importance: memory.importance,
+      source_conversation_id: sourceConversationId,
+    }))
+  );
+
+  if (filteredEntries.length > 0) {
+    await saveAgentMemories(filteredEntries);
+  }
+
+  await pruneShortTermMemories(agentSlug);
+
+  let updatedMemories = await getAgentMemories(agentSlug);
+
+  if (await needsConsolidation(agentSlug)) {
+    const durableMemories = updatedMemories
+      .filter((memory) => isConsolidatableMemoryType(memory.memory_type))
+      .map((memory) => ({
+        type: memory.memory_type,
+        content: memory.content,
+        importance: memory.importance,
+      }));
+
+    if (durableMemories.length > 0) {
+      const consolidated = await requestMemoryConsolidation(agentName, agentRole, durableMemories);
+      if (consolidated.length > 0) {
+        await replaceMemoriesWithConsolidated(
+          agentSlug,
+          consolidated.map((memory) => ({
+            memory_type: memory.type,
+            content: memory.content,
+            importance: memory.importance,
+          }))
+        );
+        updatedMemories = await getAgentMemories(agentSlug);
+      }
+    }
+  }
+
+  return updatedMemories;
 }
 
 /**
@@ -152,7 +341,7 @@ export async function needsConsolidation(agentSlug: string): Promise<boolean> {
     .from("agent_memory")
     .select("id", { count: "exact", head: true })
     .eq("agent_slug", agentSlug)
-    .not("memory_type", "in", `(${SINGLETON_TYPES.map((t) => `"${t}"`).join(",")})`);
+    .in("memory_type", CONSOLIDATABLE_TYPES);
 
   if (error || !count) return false;
   return count > CONSOLIDATION_THRESHOLD;
@@ -166,12 +355,12 @@ export async function replaceMemoriesWithConsolidated(
   agentSlug: string,
   consolidated: { memory_type: MemoryType; content: string; importance?: number }[]
 ): Promise<void> {
-  // Delete only non-singleton memories (singletons are managed via upsert)
+  // Delete only durable consolidatable memories.
   const { error: delErr } = await supabase
     .from("agent_memory")
     .delete()
     .eq("agent_slug", agentSlug)
-    .not("memory_type", "in", `(${SINGLETON_TYPES.map((t) => `"${t}"`).join(",")})`);
+    .in("memory_type", CONSOLIDATABLE_TYPES);
 
   if (delErr) {
     console.error("Failed to delete old memories:", delErr.message);
@@ -209,6 +398,8 @@ export async function replaceMemoriesWithConsolidated(
 export function buildMemoriesByType(memories: AgentMemory[]): Record<string, string> {
   const result: Record<string, string> = {};
   for (const mem of memories) {
+    if (isShortTermMemoryType(mem.memory_type)) continue;
+
     if (SINGLETON_TYPES.includes(mem.memory_type)) {
       // Singleton: just the single current value
       result[mem.memory_type] = mem.content;
@@ -230,10 +421,11 @@ export function buildMemoriesByType(memories: AgentMemory[]): Record<string, str
  * Limits to the most important+recent memories to avoid exceeding token limits.
  */
 export function formatMemoriesForPrompt(memories: AgentMemory[], maxEntries = 20): string {
-  if (memories.length === 0) return "";
+  const durableMemories = memories.filter((memory) => !isShortTermMemoryType(memory.memory_type));
+  if (durableMemories.length === 0) return "";
 
   // Already sorted by importance desc, created_at desc from DB
-  const limited = memories.slice(0, maxEntries);
+  const limited = durableMemories.slice(0, maxEntries);
 
   const grouped: Record<string, string[]> = {};
   for (const mem of limited) {
@@ -297,7 +489,7 @@ export function formatPersonalMemories(memories: AgentMemory[]): string {
 export function formatRecentTopics(memories: AgentMemory[]): string {
   const topics = memories
     .filter((m) => m.memory_type === "topic_tracker")
-    .slice(0, 10);
+    .slice(0, SHORT_TERM_TOPIC_LIMIT);
   if (topics.length === 0) return "";
   return topics.map((t) => `- ${t.content}`).join("\n");
 }

@@ -53,6 +53,8 @@ export interface Project {
   gddOriginal: GDDOriginal | null;
   /** État évolutif du design, mis à jour par la pipeline. Null jusqu'à la première décision. */
   gddVivant: GDDVivant | null;
+  /** URL GitHub Pages du mini-jeu déployé. Null tant que le déploiement n'est pas actif. */
+  deploymentUrl: string | null;
 }
 
 export type { GDDOriginal, GDDVivant };

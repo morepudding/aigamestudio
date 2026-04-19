@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import PipelineView from "@/components/pipeline/PipelineView";
+import PostMortemView from "@/components/post-mortem/PostMortemView";
 
 const statusLabels: Record<string, string> = {
   concept: "Concept",
@@ -136,9 +137,14 @@ export default async function ProjectPage({
 
       {/* ── Main Content ── */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 w-full">
-        {/* Left column (Pipeline) */}
+        {/* Left column (Pipeline + Post-Mortem) */}
         <div className="lg:col-span-2 space-y-8">
           <PipelineView projectId={project.id} phase={project.status} />
+
+          {/* Post-Mortem — uniquement pour les projets terminés */}
+          {project.status === "released" && (
+            <PostMortemView projectId={project.id} projectTitle={project.title} />
+          )}
 
           <section className="bg-white/2 border border-white/8 backdrop-blur-md rounded-2xl p-6">
             <h3 className="text-sm font-bold text-white/60 mb-4">Informations Techniques</h3>

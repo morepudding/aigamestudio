@@ -26,6 +26,7 @@ export const projects: Project[] = [
     },
     gddOriginal: null,
     gddVivant: null,
+    deploymentUrl: null,
     conceptDeliverables: {
       gdd: false,
       techSpec: false,

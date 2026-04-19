@@ -3,7 +3,12 @@ import { getAllProjects, createProject } from "@/lib/services/projectService";
 
 export async function GET() {
   const projects = await getAllProjects();
-  return NextResponse.json(projects);
+  return NextResponse.json(projects, {
+    headers: {
+      // Projets changent occasionnellement — 30s de cache, 2min stale-while-revalidate
+      "Cache-Control": "public, s-maxage=30, stale-while-revalidate=120",
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -35,6 +40,7 @@ export async function POST(req: NextRequest) {
     courseInfo: null,
     gddOriginal: null,
     gddVivant: null,
+    deploymentUrl: null,
   });
 
   if (!project) {

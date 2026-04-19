@@ -23,7 +23,10 @@ import {
   Shield,
   Trash2,
   ChevronRight,
+  Check,
 } from "lucide-react";
+import { AGENT_POSITIONS, PROGRAMMER_SPECIALIZATIONS } from "@/lib/types/agent";
+import type { AgentPosition, ProgrammerSpecialization } from "@/lib/types/agent";
 import { projects } from "@/lib/data/projects";
 import { departments, personalities } from "@/lib/wizard-data";
 import { parsePersonalityTraits } from "@/lib/types/agent";
@@ -58,6 +61,8 @@ interface AgentDetail {
   mood_cause: string | null;
   confidence_level: number | null;
   personality_bio: string | null;
+  position: string | null;
+  specialization: string | null;
 }
 
 const PERSONALITY_BIO_CACHE_PREFIX = "personality-bio:v1:";
@@ -220,6 +225,8 @@ export default function AgentDetailPage() {
   const [personalityBio, setPersonalityBio] = useState("");
   const [phrasesLoading, setPhrasesLoading] = useState(false);
   const [backstoryExpanded, setBackstoryExpanded] = useState(false);
+  const [positionSaving, setPositionSaving] = useState(false);
+  const [positionSaved, setPositionSaved] = useState(false);
 
 
   useEffect(() => {
@@ -354,6 +361,25 @@ export default function AgentDetailPage() {
     } catch (error) {
       setResetError(error instanceof Error ? error.message : "Erreur inconnue");
       setResetting(false);
+    }
+  };
+
+  const handleUpdateCareer = async (field: "position" | "specialization", value: string | null) => {
+    if (!agent || positionSaving) return;
+    setPositionSaving(true);
+    setPositionSaved(false);
+    try {
+      const res = await fetch(`/api/agents/${agent.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!res.ok) throw new Error("Échec de la mise à jour");
+      setAgent((cur) => cur ? { ...cur, [field]: value } : cur);
+      setPositionSaved(true);
+      setTimeout(() => setPositionSaved(false), 2000);
+    } finally {
+      setPositionSaving(false);
     }
   };
 
@@ -737,6 +763,67 @@ export default function AgentDetailPage() {
             </button>
 
             {regenerationError && <p className="text-sm text-rose-400">{regenerationError}</p>}
+          </div>
+
+          {/* Carrière — position & spécialisation */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-white">Carrière</h2>
+              {positionSaving && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+              {positionSaved && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+            </div>
+
+            {/* Position — hiérarchie 3 niveaux */}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-widest">Position</p>
+              <div className="flex gap-2">
+                {AGENT_POSITIONS.map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    disabled={positionSaving}
+                    onClick={() => handleUpdateCareer("position", agent.position === pos.id ? null : pos.id)}
+                    className={`flex-1 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-50 ${
+                      agent.position === pos.id
+                        ? "bg-primary/20 border-primary/40 text-primary"
+                        : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {pos.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Spécialisation — programmeurs uniquement */}
+            {agent.department === "programming" && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground uppercase tracking-widest">Spécialisation</p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {PROGRAMMER_SPECIALIZATIONS.map((spec) => (
+                    <button
+                      key={spec.id}
+                      type="button"
+                      disabled={positionSaving}
+                      onClick={() => handleUpdateCareer("specialization", agent.specialization === spec.id ? null : spec.id)}
+                      className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-left transition-colors disabled:opacity-50 ${
+                        agent.specialization === spec.id
+                          ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300"
+                          : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold">{spec.label}</p>
+                        <p className="text-[10px] opacity-60 leading-snug">{spec.description}</p>
+                      </div>
+                      {agent.specialization === spec.id && (
+                        <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Infos essentielles */}

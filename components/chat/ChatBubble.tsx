@@ -4,7 +4,7 @@ import { MessageCircle } from "lucide-react";
 import { useChatPanel } from "./ChatPanelProvider";
 
 export function ChatBubble() {
-  const { isOpen, openHub, closeChat, unreadCount } = useChatPanel();
+  const { isOpen, openHub, closeChat, unreadCount, primeChatPanel } = useChatPanel();
 
   function handleClick() {
     if (isOpen) {
@@ -17,6 +17,9 @@ export function ChatBubble() {
   return (
     <button
       onClick={handleClick}
+      onMouseEnter={primeChatPanel}
+      onFocus={primeChatPanel}
+      onTouchStart={primeChatPanel}
       className="hidden md:flex fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-primary shadow-lg shadow-primary/30 items-center justify-center hover:scale-110 active:scale-95 transition-all duration-200 group"
       title="Ouvrir les messages"
       aria-label="Ouvrir les messages"

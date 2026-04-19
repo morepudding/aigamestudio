@@ -21,7 +21,11 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Menu,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { useOfficeNav } from "@/components/sidebar";
 import {
   generateAndLoadAssetWithUrl,
   fetchOrGenerateVariant,
@@ -328,6 +332,8 @@ export function PixelArtOffice() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: FALLBACK_CANVAS_W, height: FALLBACK_CANVAS_H });
   const [canvasScale, setCanvasScale] = useState(1);
+  const [catalogOpen, setCatalogOpen] = useState(true);
+  const officeNav = useOfficeNav();
 
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [generatingType, setGeneratingType] = useState<OfficeAssetType | null>(null);
@@ -347,18 +353,25 @@ export function PixelArtOffice() {
 
   useEffect(() => { initializeStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
+  const [containerSize, setContainerSize] = useState({ width: FALLBACK_CANVAS_W, height: FALLBACK_CANVAS_H });
+
   useEffect(() => {
     const update = () => {
       if (!containerRef.current) return;
-      setCanvasScale(Math.min(1, containerRef.current.clientWidth / canvasSize.width));
+      const containerW = containerRef.current.clientWidth;
+      const containerH = containerRef.current.clientHeight;
+      setContainerSize({ width: containerW, height: containerH });
+      const scaleW = containerW / canvasSize.width;
+      const scaleH = containerH / canvasSize.height;
+      setCanvasScale(Math.min(scaleW, scaleH));
     };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, [canvasSize.width]);
+  }, [canvasSize.width, canvasSize.height]);
 
-  const stageW = canvasSize.width * canvasScale;
-  const stageH = canvasSize.height * canvasScale;
+  const stageW = containerSize.width;
+  const stageH = containerSize.height;
   const selectedAsset = assets.find((a) => a.id === selectedAssetId) ?? null;
 
   // ── Persist variant URL ────────────────────────────────────────────────────
@@ -598,151 +611,179 @@ export function PixelArtOffice() {
   const activeCat = CATALOG_CATEGORIES.find((c) => c.id === activeCategory) ?? CATALOG_CATEGORIES[0];
 
   return (
-    <div className="flex h-full gap-0">
+    <div className="relative w-full h-full bg-slate-950 overflow-hidden">
 
-      {/* ── LEFT PANEL — Sims-style build catalog ── */}
-      <div className="w-48 shrink-0 flex flex-col border-r border-white/8 bg-black/20">
-
-        {/* Category tabs */}
-        <div className="flex flex-col gap-0.5 p-2 border-b border-white/8">
-          {CATALOG_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategory(cat.id)}
-              className={[
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-left",
-                activeCategory === cat.id
-                  ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
-                  : "text-white/40 hover:text-white/70 hover:bg-white/5",
-              ].join(" ")}
-            >
-              <span className="opacity-70">{cat.icon}</span>
-              {cat.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Item grid */}
-        <div className="flex-1 overflow-y-auto p-2">
-          <div className="grid grid-cols-3 gap-1.5">
-            {activeCat.items.map((type) => (
-              <CatalogItem
-                key={type}
-                type={type}
-                variants={assetVariants[type] ?? {}}
-                isGenerating={generatingType === type}
-                onClick={() => void handleCatalogClick(type)}
-              />
-            ))}
+      {/* ── FULLSCREEN CANVAS ── */}
+      <div ref={containerRef} className="absolute inset-0">
+        {status === "loading" && !studioImage && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center gap-2">
+            <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+            <span className="text-sm text-white/40">Génération en cours...</span>
           </div>
-        </div>
+        )}
 
-        {/* Bottom: background */}
-        <div className="p-2 border-t border-white/8">
-          <button
-            onClick={() => void loadBackground(true)}
-            disabled={status === "loading"}
-            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:bg-white/5 transition-all disabled:opacity-30"
-          >
-            {generatingType === "studio_empty" ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <Sparkles className="w-3 h-3" />
-            )}
-            Nouveau fond
-          </button>
-        </div>
+        <Stage
+          width={stageW}
+          height={stageH}
+          scaleX={canvasScale}
+          scaleY={canvasScale}
+          onClick={(e) => { if (e.target === e.target.getStage()) setSelectedAssetId(null); }}
+        >
+          <Layer>
+            {/* Fond noir plein écran (bandes noires letterbox/pillarbox) */}
+            <Rect x={0} y={0} width={stageW / canvasScale} height={stageH / canvasScale} fill="#0d0d14" />
+            {studioImage && (() => {
+              const imgW = studioImage.naturalWidth || canvasSize.width;
+              const imgH = studioImage.naturalHeight || canvasSize.height;
+              const availW = stageW / canvasScale;
+              const availH = stageH / canvasScale;
+              const scale = Math.min(availW / imgW, availH / imgH);
+              const drawW = imgW * scale;
+              const drawH = imgH * scale;
+              const offsetX = (availW - drawW) / 2;
+              const offsetY = (availH - drawH) / 2;
+              return <KImage image={studioImage} x={offsetX} y={offsetY} width={drawW} height={drawH} />;
+            })()}
+            {assets.map((asset) => {
+              const isSelected = asset.id === selectedAssetId;
+              return (
+                <KImage
+                  key={asset.id}
+                  image={asset.image}
+                  x={asset.x}
+                  y={asset.y}
+                  width={asset.width}
+                  height={asset.height}
+                  draggable
+                  onClick={() => setSelectedAssetId(asset.id)}
+                  onTap={() => setSelectedAssetId(asset.id)}
+                  onDragEnd={(e) => {
+                    const node = e.target;
+                    setAssets((prev) => prev.map((a) =>
+                      a.id === asset.id ? { ...a, x: node.x(), y: node.y() } : a
+                    ));
+                  }}
+                  opacity={isSelected ? 1 : 0.95}
+                  stroke={isSelected ? "#818cf8" : undefined}
+                  strokeWidth={isSelected ? 2 : 0}
+                />
+              );
+            })}
+          </Layer>
+          <Layer listening={false}>
+            <Text x={10} y={10} text={studioImage ? `${canvasSize.width} × ${canvasSize.height}` : ""} fontSize={11} fill="rgba(255,255,255,0.2)" />
+          </Layer>
+        </Stage>
       </div>
 
-      {/* ── RIGHT — Canvas + toolbar ── */}
-      <div className="flex-1 min-w-0 flex flex-col gap-2 p-3">
+      {/* ── HUD: bouton nav (coin haut-gauche) ── */}
+      <button
+        onClick={officeNav.toggle}
+        className="absolute top-3 left-3 z-30 p-2 rounded-xl bg-black/50 backdrop-blur border border-white/10 text-white/50 hover:text-white hover:bg-black/70 transition-all"
+        title="Menu navigation"
+      >
+        <Menu className="w-4 h-4" />
+      </button>
 
-        {/* Top toolbar — minimal */}
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-white/25">{assets.length} objet{assets.length !== 1 ? "s" : ""}</span>
-          <div className="flex items-center gap-1.5">
-            {saveMessage && (
-              <span className="text-[11px] text-emerald-400/80 flex items-center gap-1">
-                <Check className="w-3 h-3" /> {saveMessage}
-              </span>
-            )}
-            {errorMessage && (
-              <span className="text-[11px] text-red-400/80">{errorMessage}</span>
-            )}
-            <button
-              onClick={restoreFromDb}
-              disabled={status === "loading"}
-              className="p-1.5 rounded-lg border border-white/10 text-white/30 hover:text-white/60 hover:bg-white/5 transition-all disabled:opacity-30"
-              title="Restaurer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={saveLayout}
-              disabled={!studioImage || status === "loading"}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/70 border border-indigo-400/30 text-white text-[11px] font-semibold hover:bg-indigo-500/70 transition-all disabled:opacity-30"
-            >
-              <Save className="w-3.5 h-3.5" />
-              Sauvegarder
-            </button>
-          </div>
-        </div>
-
-        {/* Canvas */}
-        <div ref={containerRef} className="relative rounded-xl overflow-hidden border border-white/10 bg-slate-950">
-          {status === "loading" && !studioImage && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center gap-2">
-              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
-              <span className="text-sm text-white/40">Génération en cours...</span>
-            </div>
+      {/* ── HUD: toolbar flottante (coin haut-droite) ── */}
+      <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+        {saveMessage && (
+          <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-white/10">
+            <Check className="w-3 h-3" /> {saveMessage}
+          </span>
+        )}
+        {errorMessage && (
+          <span className="text-[11px] text-red-400/80 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-red-500/20">
+            {errorMessage}
+          </span>
+        )}
+        <button
+          onClick={() => void loadBackground(true)}
+          disabled={status === "loading"}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:bg-black/70 transition-all disabled:opacity-30"
+          title="Nouveau fond"
+        >
+          {generatingType === "studio_empty" ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Sparkles className="w-3 h-3" />
           )}
+          Fond
+        </button>
+        <button
+          onClick={restoreFromDb}
+          disabled={status === "loading"}
+          className="p-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-white/30 hover:text-white/60 hover:bg-black/70 transition-all disabled:opacity-30"
+          title="Restaurer"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={saveLayout}
+          disabled={!studioImage || status === "loading"}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/80 backdrop-blur border border-indigo-400/30 text-white text-[11px] font-semibold hover:bg-indigo-500/80 transition-all disabled:opacity-30"
+        >
+          <Save className="w-3.5 h-3.5" />
+          Sauvegarder
+        </button>
+      </div>
 
-          <Stage
-            width={stageW}
-            height={stageH}
-            scaleX={canvasScale}
-            scaleY={canvasScale}
-            onClick={(e) => { if (e.target === e.target.getStage()) setSelectedAssetId(null); }}
-          >
-            <Layer>
-              <Rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} fill="#1a1025" />
-              {studioImage && (
-                <KImage image={studioImage} x={0} y={0} width={canvasSize.width} height={canvasSize.height} />
-              )}
-              {assets.map((asset) => {
-                const isSelected = asset.id === selectedAssetId;
-                return (
-                  <KImage
-                    key={asset.id}
-                    image={asset.image}
-                    x={asset.x}
-                    y={asset.y}
-                    width={asset.width}
-                    height={asset.height}
-                    draggable
-                    onClick={() => setSelectedAssetId(asset.id)}
-                    onTap={() => setSelectedAssetId(asset.id)}
-                    onDragEnd={(e) => {
-                      const node = e.target;
-                      setAssets((prev) => prev.map((a) =>
-                        a.id === asset.id ? { ...a, x: node.x(), y: node.y() } : a
-                      ));
-                    }}
-                    opacity={isSelected ? 1 : 0.95}
-                    stroke={isSelected ? "#818cf8" : undefined}
-                    strokeWidth={isSelected ? 2 : 0}
+      {/* ── HUD: catalogue d'assets (coin bas-gauche, collapsible) ── */}
+      <div className="absolute bottom-4 left-3 z-30 w-48 flex flex-col gap-0 rounded-2xl border border-white/10 bg-black/60 backdrop-blur-md overflow-hidden shadow-2xl">
+        {/* Header / toggle */}
+        <button
+          onClick={() => setCatalogOpen((v) => !v)}
+          className="flex items-center justify-between px-3 py-2 text-[11px] text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
+        >
+          <span className="font-semibold uppercase tracking-wider">Ajouter</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-white/25">{assets.length} obj.</span>
+            {catalogOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+          </div>
+        </button>
+
+        {catalogOpen && (
+          <>
+            {/* Category tabs */}
+            <div className="flex flex-col gap-0.5 px-2 pb-1 border-t border-white/8">
+              {CATALOG_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={[
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-left mt-1",
+                    activeCategory === cat.id
+                      ? "bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
+                      : "text-white/40 hover:text-white/70 hover:bg-white/5",
+                  ].join(" ")}
+                >
+                  <span className="opacity-70">{cat.icon}</span>
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Item grid */}
+            <div className="p-2 border-t border-white/8">
+              <div className="grid grid-cols-3 gap-1.5">
+                {activeCat.items.map((type) => (
+                  <CatalogItem
+                    key={type}
+                    type={type}
+                    variants={assetVariants[type] ?? {}}
+                    isGenerating={generatingType === type}
+                    onClick={() => void handleCatalogClick(type)}
                   />
-                );
-              })}
-            </Layer>
-            <Layer listening={false}>
-              <Text x={10} y={10} text={studioImage ? `${canvasSize.width} × ${canvasSize.height}` : ""} fontSize={11} fill="rgba(255,255,255,0.2)" />
-            </Layer>
-          </Stage>
-        </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
-        {/* Selected asset bar */}
-        {selectedAsset && (
+      {/* ── HUD: panel asset sélectionné (overlay bas, centré) ── */}
+      {selectedAsset && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-3">
           <SelectedAssetPanel
             asset={selectedAsset}
             variants={assetVariants[selectedAsset.type] ?? {}}
@@ -753,8 +794,8 @@ export function PixelArtOffice() {
             onDelete={deleteSelected}
             onClose={() => setSelectedAssetId(null)}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,12 @@ import { getAllAgents, deleteAgent } from "@/lib/services/agentService";
 
 export async function GET() {
   const agents = await getAllAgents();
-  return NextResponse.json(agents);
+  return NextResponse.json(agents, {
+    headers: {
+      // Agents changent rarement — 60s de cache, 5min stale-while-revalidate
+      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+    },
+  });
 }
 
 export async function DELETE(req: NextRequest) {

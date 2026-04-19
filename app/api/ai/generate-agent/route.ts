@@ -178,6 +178,16 @@ task_name:
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 
+  // Generate LPC pixel sprite in the background (fire-and-forget)
+  try {
+    const origin = req.nextUrl.origin;
+    fetch(`${origin}/api/agents/${agentSlug}/generate-sprite`, { method: "POST" }).catch(
+      () => {}
+    );
+  } catch {
+    // Non-blocking — sprite can be regenerated manually from the office view
+  }
+
   return NextResponse.json({
     success: true,
     agentSlug,

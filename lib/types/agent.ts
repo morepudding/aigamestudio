@@ -8,6 +8,62 @@ export type Department =
   | "marketing"
   | "production";
 
+/** Hiérarchie en 3 niveaux, commune à tous les départements */
+export type AgentPosition = "junior" | "confirmé" | "lead";
+
+export const AGENT_POSITIONS: { id: AgentPosition; label: string }[] = [
+  { id: "junior", label: "Junior" },
+  { id: "confirmé", label: "Confirmé" },
+  { id: "lead", label: "Lead" },
+];
+
+/** Spécialisations réservées au département programming */
+export type ProgrammerSpecialization =
+  | "gameplay"
+  | "engine"
+  | "backend"
+  | "ui-tech"
+  | "devops";
+
+export const PROGRAMMER_SPECIALIZATIONS: {
+  id: ProgrammerSpecialization;
+  label: string;
+  description: string;
+  /** Mots-clés de tâches pipeline qui matchent cette spécialisation */
+  taskKeywords: string[];
+}[] = [
+  {
+    id: "gameplay",
+    label: "Gameplay",
+    description: "Mécaniques de jeu, contrôles, boucle de jeu",
+    taskKeywords: ["gameplay", "mécanique", "contrôle", "physique", "jeu", "player", "level"],
+  },
+  {
+    id: "engine",
+    label: "Engine",
+    description: "Moteur, performance, outils internes",
+    taskKeywords: ["moteur", "engine", "perf", "rendu", "shader", "optimis", "profil"],
+  },
+  {
+    id: "backend",
+    label: "Backend",
+    description: "Serveurs, base de données, API",
+    taskKeywords: ["backend", "api", "base de données", "serveur", "auth", "supabase", "rest"],
+  },
+  {
+    id: "ui-tech",
+    label: "UI/UX Tech",
+    description: "Interfaces, intégration design, front-end",
+    taskKeywords: ["ui", "interface", "front", "design", "composant", "layout", "css"],
+  },
+  {
+    id: "devops",
+    label: "DevOps",
+    description: "Build, déploiement, CI/CD",
+    taskKeywords: ["deploy", "build", "ci", "cd", "pipeline", "infra", "docker"],
+  },
+];
+
 export type Gender = "homme" | "femme";
 
 export type PersonalityTrait =
@@ -120,4 +176,6 @@ export interface AgentDraft {
   role?: string;
   goal?: string;
   backstory?: string;
+  position?: AgentPosition;
+  specialization?: ProgrammerSpecialization | null;
 }

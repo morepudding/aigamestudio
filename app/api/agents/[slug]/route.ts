@@ -31,7 +31,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt", "personality_bio", "gender"] as const;
+  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt", "personality_bio", "gender", "position", "specialization"] as const;
 
   const updates: Record<string, unknown> = {};
   for (const key of allowedFields) {
@@ -65,6 +65,22 @@ export async function PATCH(
     const validGenders = ["femme", "homme"];
     if (!validGenders.includes(String(updates.gender))) {
       return NextResponse.json({ error: "Invalid gender" }, { status: 400 });
+    }
+  }
+
+  // Validate position if provided
+  if (updates.position !== undefined && updates.position !== null) {
+    const validPositions = ["junior", "confirmé", "lead"];
+    if (!validPositions.includes(String(updates.position))) {
+      return NextResponse.json({ error: "Invalid position" }, { status: 400 });
+    }
+  }
+
+  // Validate specialization if provided
+  if (updates.specialization !== undefined && updates.specialization !== null) {
+    const validSpecializations = ["gameplay", "engine", "backend", "ui-tech", "devops"];
+    if (!validSpecializations.includes(String(updates.specialization))) {
+      return NextResponse.json({ error: "Invalid specialization" }, { status: 400 });
     }
   }
 

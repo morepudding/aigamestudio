@@ -54,6 +54,7 @@ export interface Agent {
   gender: string;
   department: string;
   status: string;
+  is_system_agent: boolean;
   assigned_project: string;
   portrait_url: string | null;
   icon_url: string | null;
@@ -63,6 +64,12 @@ export interface Agent {
   confidence_level: number;
   recruited_at: string | null;
   tasks: AgentTask[];
+  /** Hiérarchie: junior | confirmé | lead */
+  position?: string | null;
+  /** Spécialisation programmeur: gameplay | engine | backend | ui-tech | devops */
+  specialization?: string | null;
+  /** LPC pixel spritesheet URL (576×256, 9 frames × 4 directions) */
+  lpc_sprite_url?: string | null;
 }
 
 export async function getAllAgents(): Promise<Agent[]> {
@@ -101,7 +108,7 @@ export async function getAgentBySlug(slug: string): Promise<Agent | null> {
 }
 
 export async function createAgent(
-  agent: Omit<Agent, "tasks">,
+  agent: Omit<Agent, "tasks" | "is_system_agent"> & { is_system_agent?: boolean },
   tasks: AgentTask[]
 ): Promise<void> {
   const { error: agentErr } = await supabase.from("agents").insert({
@@ -118,6 +125,7 @@ export async function createAgent(
     gender: agent.gender,
     department: agent.department,
     status: agent.status,
+    is_system_agent: agent.is_system_agent ?? false,
     assigned_project: agent.assigned_project,
     portrait_url: agent.portrait_url ?? null,
     icon_url: agent.icon_url ?? null,
@@ -141,7 +149,7 @@ export async function createAgent(
 
 export async function updateAgentFields(
   slug: string,
-  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level" | "personality_bio" | "appearance_prompt" | "gender">>
+  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level" | "personality_bio" | "appearance_prompt" | "gender" | "position" | "specialization" | "lpc_sprite_url">>
 ): Promise<void> {
   const { error } = await supabase.from("agents").update(updates).eq("slug", slug);
   if (error) throw new Error(error.message);

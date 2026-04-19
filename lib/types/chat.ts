@@ -20,3 +20,17 @@ export interface Conversation {
   lastMessageAt: number;
   createdAt: number;
 }
+
+/** Version allégée pour le hub — ne contient pas l'historique complet */
+export interface ConversationSummary {
+  id: string;
+  agentSlug: string;
+  awaitingUserReply: boolean;
+  discoveryCount: number;
+  lastMessage: {
+    sender: "user" | "agent";
+    content: string;
+    messageType: MessageType;
+  } | null;
+  lastMessageAt: number;
+}

@@ -20,6 +20,7 @@ type DbProject = {
   course_info: import("@/lib/types/project").CourseInfo | null;
   gdd_original: import("@/lib/types/contracts").GDDOriginal | null;
   gdd_vivant: import("@/lib/types/contracts").GDDVivant | null;
+  deployment_url: string | null;
 };
 
 function toProject(row: DbProject): Project {
@@ -43,6 +44,7 @@ function toProject(row: DbProject): Project {
     courseInfo: row.course_info ?? staticProject?.courseInfo ?? null,
     gddOriginal: row.gdd_original ?? null,
     gddVivant: row.gdd_vivant ?? null,
+    deploymentUrl: row.deployment_url ?? null,
   };
   // Only recompute status when the DB says "concept" — let "in-dev" and "released"
   // pass through so manual/automated transitions are not overridden.
@@ -127,6 +129,7 @@ export async function updateProject(
   if (fields.githubRepoName !== undefined) dbFields.github_repo_name = fields.githubRepoName;
   if (fields.active !== undefined) dbFields.active = fields.active;
   if (fields.decisionsReady !== undefined) dbFields.decisions_ready = fields.decisionsReady;
+  if (fields.deploymentUrl !== undefined) dbFields.deployment_url = fields.deploymentUrl;
 
   const { data, error } = await supabase
     .from("projects")

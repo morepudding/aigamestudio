@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
-import { Footer } from "@/components/footer";
+import { Sidebar, OfficeNavProvider } from "@/components/sidebar";
 import { ChatPanelProvider } from "@/components/chat/ChatPanelProvider";
-import { ChatPanel } from "@/components/chat/ChatPanel";
+import { ChatPanelMount } from "@/components/chat/ChatPanelMount";
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { ConditionalLayout } from "@/components/ConditionalLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,12 +48,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex bg-background text-foreground overflow-hidden">
         <ChatPanelProvider>
-          <Sidebar />
-          <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-            <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6 pb-24 md:px-10 md:py-10 md:pb-10 lg:px-14 lg:py-14">{children}</main>
-            <Footer />
-          </div>
-          <ChatPanel />
+          <OfficeNavProvider>
+            <Sidebar />
+            <ConditionalLayout>{children}</ConditionalLayout>
+          </OfficeNavProvider>
+          <ChatPanelMount />
           <ChatBubble />
         </ChatPanelProvider>
       </body>

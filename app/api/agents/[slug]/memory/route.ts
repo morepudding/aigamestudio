@@ -22,16 +22,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Failed to delete memories" }, { status: 500 });
   }
 
-  // Delete onboarding choices
-  const { error: onboardingError } = await supabase
-    .from("onboarding_choices")
-    .delete()
-    .eq("agent_slug", safeSlug);
-
-  if (onboardingError) {
-    return NextResponse.json({ error: "Failed to delete onboarding choices" }, { status: 500 });
-  }
-
   // Reset agent state (full reset including personality_nuance)
   const { error: agentError } = await supabase
     .from("agents")

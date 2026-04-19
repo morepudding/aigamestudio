@@ -15,12 +15,11 @@ import {
 } from "@/lib/services/chatService";
 import {
   getAgentMemories,
-  formatMemoriesForPrompt,
-  formatPersonalMemories,
-  formatRecentTopics,
-  buildMemoriesByType,
-  saveAgentMemories,
-  MemoryType,
+  buildMemoryContextState,
+  processExtractedMemories,
+  calculateConfidenceDelta,
+  type ExtractedMemoryInput,
+  type MemoryType,
 } from "@/lib/services/memoryService";
 import { supabase } from "@/lib/supabase/client";
 
@@ -67,11 +66,11 @@ export default function ChatSlugPage() {
 
         // Load memories
         const memories = await getAgentMemories(agentData.slug);
-        const formatted = formatMemoriesForPrompt(memories);
-        setAgentMemories(formatted);
-        setPersonalMems(formatPersonalMemories(memories));
-        setRecentTopics(formatRecentTopics(memories));
-        setMemoriesByType(buildMemoriesByType(memories));
+        const memoryContext = buildMemoryContextState(memories);
+        setAgentMemories(memoryContext.promptMemories);
+        setPersonalMems(memoryContext.personalMemories);
+        setRecentTopics(memoryContext.recentTopics);
+        setMemoriesByType(memoryContext.memoriesByType);
 
         // Init or get conversation
         const conv = await initConversation(
@@ -81,7 +80,7 @@ export default function ChatSlugPage() {
           agentData.personality_nuance ?? "",
           agentData.role ?? "",
           agentData.backstory ?? "",
-          formatted
+          memoryContext.promptMemories
         );
 
         setConversation(conv);
@@ -244,30 +243,41 @@ export default function ChatSlugPage() {
           memoriesByType
         ).then(async (newMemories) => {
           if (newMemories.length > 0) {
-            await saveAgentMemories(
-              newMemories.map((m) => ({
-                agent_slug: agent.slug,
-                memory_type: m.type as MemoryType,
-                content: m.content,
-                importance: m.importance,
-                source_conversation_id: conversation.id,
-              }))
-            );
-            const updated = await getAgentMemories(agent.slug);
-            setAgentMemories(formatMemoriesForPrompt(updated));
-            setPersonalMems(formatPersonalMemories(updated));
-            setRecentTopics(formatRecentTopics(updated));
-            setMemoriesByType(buildMemoriesByType(updated));
+            const currentMemories = await getAgentMemories(agent.slug);
+            const extractedMemories: ExtractedMemoryInput[] = newMemories.map((memory) => ({
+              type: memory.type as MemoryType,
+              content: memory.content,
+              importance: memory.importance,
+            }));
+            const updated = await processExtractedMemories({
+              agentSlug: agent.slug,
+              agentName: agent.name,
+              agentRole: agent.role,
+              extractedMemories,
+              existingMemories: currentMemories,
+              sourceConversationId: conversation.id,
+            });
+            const memoryContext = buildMemoryContextState(updated);
+            setAgentMemories(memoryContext.promptMemories);
+            setPersonalMems(memoryContext.personalMemories);
+            setRecentTopics(memoryContext.recentTopics);
+            setMemoriesByType(memoryContext.memoriesByType);
 
             // Update confidence based on confidence memories
             const confidenceEntries = newMemories.filter((m) => m.type === "confidence");
             if (confidenceEntries.length > 0) {
-              const delta = confidenceEntries.reduce((acc, m) => {
-                const c = m.content.toLowerCase();
-                if (c.includes("+confiance") || c.includes("positif") || c.includes("complicité")) return acc + 3;
-                if (c.includes("-confiance") || c.includes("tension") || c.includes("froid")) return acc - 2;
-                return acc + 1;
-              }, 0);
+              const delta = calculateConfidenceDelta(
+                confidenceEntries.map((memory, index) => ({
+                  id: `confidence-${index}`,
+                  agent_slug: agent.slug,
+                  memory_type: "confidence",
+                  content: memory.content,
+                  importance: memory.importance,
+                  source_conversation_id: conversation.id,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                }))
+              );
               if (delta !== 0) {
                 const currentLevel = agent.confidence_level ?? 0;
                 const newLevel = Math.max(0, Math.min(100, currentLevel + delta));
@@ -317,7 +327,7 @@ export default function ChatSlugPage() {
           .catch(() => {});
       }
     },
-    [agent, conversation, agentMemories]
+    [agent, conversation, agentMemories, memoriesByType, personalMems, recentTopics]
   );
 
   if (loading) {

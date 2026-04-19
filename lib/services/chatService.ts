@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
-import { Conversation, Message, MessageType } from "@/lib/types/chat";
+import { Conversation, ConversationSummary, Message, MessageType } from "@/lib/types/chat";
+import { perfLog } from "@/lib/utils/perf";
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -101,16 +102,82 @@ function toMessage(row: DbMessage): Message {
 // ─── Public API (async) ──────────────────────────────────────────────────────
 
 export async function getAllConversations(): Promise<Conversation[]> {
+  const t0 = Date.now();
   const { data: convRows, error } = await supabase
     .from("conversations")
     .select("*, messages(*)")
     .order("last_message_at", { ascending: false });
+
+  perfLog("getAllConversations", t0, {
+    rows: convRows?.length ?? 0,
+    messages: convRows?.reduce((acc, r) => acc + ((r.messages as unknown[]) ?? []).length, 0) ?? 0,
+  });
 
   if (error || !convRows) return [];
 
   return convRows.map((row) =>
     toConversation(row as DbConversation, (row.messages as DbMessage[]) ?? [])
   );
+}
+
+/**
+ * Version allégée pour le hub chat.
+ * 2 requêtes ciblées au lieu d'un JOIN complet :
+ *   1. metadata des conversations (pas de messages)
+ *   2. messages avec colonnes minimales (sender, content, timestamp, message_type)
+ * Puis agrégation en mémoire pour extraire le dernier message et le compteur discovery.
+ */
+export async function getConversationSummaries(): Promise<ConversationSummary[]> {
+  const t0 = Date.now();
+
+  // Requête 1 : métadonnées conversations seulement
+  const { data: convRows, error: convError } = await supabase
+    .from("conversations")
+    .select("id, agent_slug, awaiting_user_reply, last_message_at")
+    .order("last_message_at", { ascending: false });
+
+  if (convError || !convRows || convRows.length === 0) return [];
+
+  const ids = convRows.map((r) => r.id as string);
+
+  // Requête 2 : messages minimaux pour toutes les conversations concernées
+  const { data: msgRows } = await supabase
+    .from("messages")
+    .select("conversation_id, sender, content, timestamp, message_type")
+    .in("conversation_id", ids)
+    .order("timestamp", { ascending: false });
+
+  const lastMsgMap = new Map<string, { sender: "user" | "agent"; content: string; messageType: MessageType }>();
+  const discoveryCountMap = new Map<string, number>();
+
+  for (const msg of msgRows ?? []) {
+    const cid = msg.conversation_id as string;
+    // Premier élément (desc) = dernier message
+    if (!lastMsgMap.has(cid)) {
+      lastMsgMap.set(cid, {
+        sender: msg.sender as "user" | "agent",
+        content: msg.content as string,
+        messageType: (msg.message_type ?? "normal") as MessageType,
+      });
+    }
+    if (msg.message_type === "discovery") {
+      discoveryCountMap.set(cid, (discoveryCountMap.get(cid) ?? 0) + 1);
+    }
+  }
+
+  perfLog("getConversationSummaries", t0, {
+    conversations: convRows.length,
+    messages: (msgRows ?? []).length,
+  });
+
+  return convRows.map((row) => ({
+    id: row.id as string,
+    agentSlug: row.agent_slug as string,
+    awaitingUserReply: row.awaiting_user_reply as boolean,
+    discoveryCount: discoveryCountMap.get(row.id as string) ?? 0,
+    lastMessage: lastMsgMap.get(row.id as string) ?? null,
+    lastMessageAt: row.last_message_at as number,
+  }));
 }
 
 export async function getConversationForAgent(
@@ -293,11 +360,11 @@ export async function canAgentSend(conversationId: string): Promise<boolean> {
 }
 
 export async function getUnreadCount(): Promise<number> {
-  // Conversations where last sender was agent (awaiting_user_reply = false means agent just sent)
+  // Conversations waiting on the user because the last message came from the agent.
   const { count, error } = await supabase
     .from("conversations")
     .select("id", { count: "exact", head: true })
-    .eq("awaiting_user_reply", false);
+    .eq("awaiting_user_reply", true);
 
   if (error) return 0;
   return count ?? 0;

@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
 import { AgentDeskSpot } from "@/components/office/AgentDeskSpot";
+import { LpcAutoWalker } from "@/components/office/LpcWalker";
+import type { ZoneBounds } from "@/components/office/LpcWalker";
 import { DeptIcon } from "@/components/ui/DeptIcon";
-import { Loader2, ImageOff, RefreshCw } from "lucide-react";
+import { Loader2, ImageOff, RefreshCw, Sparkles, Crosshair, X } from "lucide-react";
+import { useChatPanel } from "@/components/chat/ChatPanelProvider";
 
 interface Agent {
   slug: string;
@@ -13,6 +16,7 @@ interface Agent {
   department: string;
   mood?: string | null;
   icon_url?: string | null;
+  lpc_sprite_url?: string | null;
 }
 
 // Desk positions as percentage of the container (x%, y%)
@@ -29,6 +33,9 @@ const DESK_POSITIONS: { x: number; y: number }[] = [
 ];
 
 const BG_URL_KEY = "office_bg_url";
+const ZONE_KEY = "office_walk_zone";
+
+type DrawRect = { x: number; y: number; w: number; h: number };
 
 export function IsometricOffice() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -36,6 +43,27 @@ export function IsometricOffice() {
   const [bgLoading, setBgLoading] = useState(false);
   const [bgError, setBgError] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingSprites, setGeneratingSprites] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ w: 800, h: 450 });
+  const { openChat } = useChatPanel();
+
+  // Zone restriction
+  const [zone, setZone] = useState<ZoneBounds | null>(null);
+  const [editingZone, setEditingZone] = useState(false);
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawRect, setDrawRect] = useState<DrawRect | null>(null);
+
+  // Track container dimensions for LpcAutoWalker positioning
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const obs = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ w: width, h: height });
+    });
+    obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   // Load agents
   useEffect(() => {
@@ -49,7 +77,63 @@ export function IsometricOffice() {
   useEffect(() => {
     const saved = localStorage.getItem(BG_URL_KEY);
     if (saved) setBgUrl(saved);
+    const savedZone = localStorage.getItem(ZONE_KEY);
+    if (savedZone) {
+      try { setZone(JSON.parse(savedZone)); } catch { /* ignore */ }
+    }
   }, []);
+
+  // ── Zone drawing ──────────────────────────────────────────────────────────
+  const getRelativePos = useCallback((e: React.MouseEvent) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.max(0, Math.min(e.clientX - rect.left, rect.width)),
+      y: Math.max(0, Math.min(e.clientY - rect.top, rect.height)),
+    };
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!editingZone) return;
+    e.preventDefault();
+    const pos = getRelativePos(e);
+    setDrawStart(pos);
+    setDrawRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
+  }, [editingZone, getRelativePos]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!editingZone || !drawStart) return;
+    const pos = getRelativePos(e);
+    setDrawRect({
+      x: Math.min(drawStart.x, pos.x),
+      y: Math.min(drawStart.y, pos.y),
+      w: Math.abs(pos.x - drawStart.x),
+      h: Math.abs(pos.y - drawStart.y),
+    });
+  }, [editingZone, drawStart, getRelativePos]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    if (!editingZone || !drawStart || !drawRect) return;
+    const { w: cw, h: ch } = containerSize;
+    if (drawRect.w > 10 && drawRect.h > 10) {
+      const newZone: ZoneBounds = {
+        x1: drawRect.x / cw,
+        y1: drawRect.y / ch,
+        x2: (drawRect.x + drawRect.w) / cw,
+        y2: (drawRect.y + drawRect.h) / ch,
+      };
+      setZone(newZone);
+      localStorage.setItem(ZONE_KEY, JSON.stringify(newZone));
+    }
+    setDrawStart(null);
+    setDrawRect(null);
+    setEditingZone(false);
+  }, [editingZone, drawStart, drawRect, containerSize]);
+
+  function clearZone() {
+    setZone(null);
+    localStorage.removeItem(ZONE_KEY);
+  }
 
   async function generateBackground() {
     setGenerating(true);
@@ -74,9 +158,38 @@ export function IsometricOffice() {
     }
   }
 
+  async function generateAllSprites() {
+    setGeneratingSprites(true);
+    const missing = agents.filter((a) => !a.lpc_sprite_url);
+    await Promise.all(
+      missing.map((a) =>
+        fetch(`/api/agents/${a.slug}/generate-sprite`, { method: "POST" })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.sprite_url) {
+              setAgents((prev) =>
+                prev.map((ag) =>
+                  ag.slug === a.slug ? { ...ag, lpc_sprite_url: data.sprite_url } : ag
+                )
+              );
+            }
+          })
+          .catch(() => {})
+      )
+    );
+    setGeneratingSprites(false);
+  }
+
+  const hasMissingSprites = agents.some((a) => !a.lpc_sprite_url);
+
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl"
+    <div
+      ref={containerRef}
+      className={`relative w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl${editingZone ? " cursor-crosshair" : ""}`}
       style={{ aspectRatio: "16/9" }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
     >
       {/* Background image */}
       {bgUrl && !bgError ? (
@@ -95,7 +208,7 @@ export function IsometricOffice() {
         </>
       ) : (
         /* Placeholder while no image */
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center gap-4">
+        <div className="absolute inset-0 bg-linear-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center gap-4">
           {generating ? (
             <>
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -117,39 +230,132 @@ export function IsometricOffice() {
         </div>
       )}
 
-      {/* Regenerate button (top-right, visible only when bg exists) */}
-      {bgUrl && !bgError && (
+      {/* Top-right toolbar */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+        {/* Zone controls */}
+        {zone && !editingZone && (
+          <button
+            onClick={clearZone}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/70 backdrop-blur text-xs text-white hover:bg-red-500 border border-red-400/40 transition-all"
+            title="Supprimer la zone de déplacement"
+          >
+            <X className="w-3 h-3" />
+            Zone
+          </button>
+        )}
         <button
-          onClick={generateBackground}
-          disabled={generating}
-          className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 backdrop-blur text-xs text-white/60 hover:text-white hover:bg-black/70 border border-white/10 transition-all"
-          title="Régénérer le fond"
+          onClick={() => { setEditingZone((v) => !v); setDrawStart(null); setDrawRect(null); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg backdrop-blur text-xs border transition-all ${
+            editingZone
+              ? "bg-amber-400/80 text-black border-amber-300/60 hover:bg-amber-400"
+              : "bg-black/50 text-white/60 hover:text-white hover:bg-black/70 border-white/10"
+          }`}
+          title={editingZone ? "Annuler le dessin" : "Définir une zone de déplacement"}
         >
-          <RefreshCw className={`w-3 h-3 ${generating ? "animate-spin" : ""}`} />
-          {generating ? "Génération…" : "Régénérer"}
+          <Crosshair className="w-3 h-3" />
+          {editingZone ? "Dessinez…" : "Zone"}
         </button>
+        {hasMissingSprites && (
+          <button
+            onClick={generateAllSprites}
+            disabled={generatingSprites}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/80 backdrop-blur text-xs text-white hover:bg-primary border border-primary/40 transition-all"
+            title="Générer les sprites pixel pour tous les agents"
+          >
+            {generatingSprites ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Sparkles className="w-3 h-3" />
+            )}
+            {generatingSprites ? "Sprites…" : "Sprites pixel"}
+          </button>
+        )}
+        {bgUrl && !bgError && (
+          <button
+            onClick={generateBackground}
+            disabled={generating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/50 backdrop-blur text-xs text-white/60 hover:text-white hover:bg-black/70 border border-white/10 transition-all"
+            title="Régénérer le fond"
+          >
+            <RefreshCw className={`w-3 h-3 ${generating ? "animate-spin" : ""}`} />
+            {generating ? "Génération…" : "Régénérer"}
+          </button>
+        )}
+      </div>
+
+      {/* Zone overlay — existing saved zone */}
+      {zone && (
+        <div
+          className="absolute pointer-events-none border-2 border-amber-400/70 bg-amber-400/10 z-10"
+          style={{
+            left: `${zone.x1 * 100}%`,
+            top: `${zone.y1 * 100}%`,
+            width: `${(zone.x2 - zone.x1) * 100}%`,
+            height: `${(zone.y2 - zone.y1) * 100}%`,
+          }}
+        >
+          <span className="absolute top-1 left-1 text-[10px] text-amber-300/80 bg-black/40 px-1 rounded leading-tight">
+            zone
+          </span>
+        </div>
       )}
 
-      {/* Agent desk spots */}
-      {agents.map((agent, index) => {
-        const pos = DESK_POSITIONS[index % DESK_POSITIONS.length];
-        return (
-          <div
-            key={agent.slug}
-            className="absolute z-10"
-            style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
-          >
-            <AgentDeskSpot
-              slug={agent.slug}
-              name={agent.name}
-              role={agent.role}
-              department={agent.department}
-              mood={agent.mood}
-              iconUrl={agent.icon_url}
+      {/* Zone drawing preview */}
+      {drawRect && drawRect.w > 2 && drawRect.h > 2 && (
+        <div
+          className="absolute pointer-events-none border-2 border-dashed border-amber-300 bg-amber-300/10 z-20"
+          style={{
+            left: drawRect.x,
+            top: drawRect.y,
+            width: drawRect.w,
+            height: drawRect.h,
+          }}
+        />
+      )}
+
+      {/* LPC walking sprites (agents that have a sprite) */}
+      {agents
+        .filter((a) => a.lpc_sprite_url)
+        .map((agent, i) => {
+          const pos = DESK_POSITIONS[i % DESK_POSITIONS.length];
+          return (
+            <LpcAutoWalker
+              key={agent.slug}
+              spriteUrl={agent.lpc_sprite_url!}
+              agentName={agent.name}
+              onClick={editingZone ? undefined : () => openChat(agent.slug)}
+              containerW={containerSize.w}
+              containerH={containerSize.h}
+              initialX={pos.x / 100}
+              initialY={pos.y / 100}
+              zoneBounds={zone ?? undefined}
             />
-          </div>
-        );
-      })}
+          );
+        })}
+
+      {/* Fallback desk spots for agents without sprite yet */}
+      {agents
+        .filter((a) => !a.lpc_sprite_url)
+        .map((agent, index) => {
+          const globalIndex = agents.findIndex((a) => a.slug === agent.slug);
+          const pos = DESK_POSITIONS[globalIndex % DESK_POSITIONS.length];
+          return (
+            <div
+              key={agent.slug}
+              className="absolute z-10"
+              style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
+            >
+              <AgentDeskSpot
+                slug={agent.slug}
+                name={agent.name}
+                role={agent.role}
+                department={agent.department}
+                mood={agent.mood}
+                iconUrl={agent.icon_url}
+              />
+            </div>
+          );
+        })}
 
       {/* Department legend bar */}
       {agents.length > 0 && (

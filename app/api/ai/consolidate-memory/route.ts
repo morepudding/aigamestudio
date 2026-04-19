@@ -6,7 +6,21 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const SINGLETON_TYPES = ["relationship", "nickname", "confidence"] as const;
 
 interface ConsolidatedMemory {
-  type: "summary" | "decision" | "preference" | "progress" | "relationship" | "nickname" | "confidence";
+  type:
+    | "summary"
+    | "decision"
+    | "preference"
+    | "progress"
+    | "relationship"
+    | "nickname"
+    | "confidence"
+    | "boss_profile"
+    | "family"
+    | "hobbies"
+    | "dreams"
+    | "social"
+    | "fears"
+    | "personal_event";
   content: string;
   importance: number; // 3-5
 }
@@ -92,7 +106,22 @@ Exemple :
 
   try {
     const parsed: ConsolidatedMemory[] = JSON.parse(jsonMatch[0]);
-    const validTypes = ["summary", "decision", "preference", "progress", "relationship", "nickname", "confidence"];
+    const validTypes = [
+      "summary",
+      "decision",
+      "preference",
+      "progress",
+      "relationship",
+      "nickname",
+      "confidence",
+      "boss_profile",
+      "family",
+      "hobbies",
+      "dreams",
+      "social",
+      "fears",
+      "personal_event",
+    ];
     const validated = parsed.filter(
       (m) =>
         validTypes.includes(m.type) &&
