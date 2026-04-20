@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import Image from "next/image";
-import { AgentDeskSpot } from "@/components/office/AgentDeskSpot";
 import { LpcAutoWalker } from "@/components/office/LpcWalker";
 import type { ZoneBounds } from "@/components/office/LpcWalker";
 import { DeptIcon } from "@/components/ui/DeptIcon";
@@ -73,14 +72,29 @@ export function IsometricOffice() {
       .catch(() => setAgents([]));
   }, []);
 
-  // Load saved bg URL from localStorage
+  // Load background from PixelArtOffice saved layout (studio-config), fallback to localStorage
   useEffect(() => {
-    const saved = localStorage.getItem(BG_URL_KEY);
-    if (saved) setBgUrl(saved);
     const savedZone = localStorage.getItem(ZONE_KEY);
     if (savedZone) {
       try { setZone(JSON.parse(savedZone)); } catch { /* ignore */ }
     }
+    // Primary: use the studioAssetUrl from the saved PixelArtOffice layout
+    fetch("/api/office/studio-config", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        const url: string | null = data?.layout?.studioAssetUrl ?? null;
+        if (url) {
+          setBgUrl(url);
+        } else {
+          // Fallback to locally stored URL
+          const saved = localStorage.getItem(BG_URL_KEY);
+          if (saved) setBgUrl(saved);
+        }
+      })
+      .catch(() => {
+        const saved = localStorage.getItem(BG_URL_KEY);
+        if (saved) setBgUrl(saved);
+      });
   }, []);
 
   // ── Zone drawing ──────────────────────────────────────────────────────────
@@ -333,29 +347,7 @@ export function IsometricOffice() {
           );
         })}
 
-      {/* Fallback desk spots for agents without sprite yet */}
-      {agents
-        .filter((a) => !a.lpc_sprite_url)
-        .map((agent, index) => {
-          const globalIndex = agents.findIndex((a) => a.slug === agent.slug);
-          const pos = DESK_POSITIONS[globalIndex % DESK_POSITIONS.length];
-          return (
-            <div
-              key={agent.slug}
-              className="absolute z-10"
-              style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
-            >
-              <AgentDeskSpot
-                slug={agent.slug}
-                name={agent.name}
-                role={agent.role}
-                department={agent.department}
-                mood={agent.mood}
-                iconUrl={agent.icon_url}
-              />
-            </div>
-          );
-        })}
+
 
       {/* Department legend bar */}
       {agents.length > 0 && (
