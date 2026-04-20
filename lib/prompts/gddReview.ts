@@ -13,24 +13,33 @@ const TRIPLE_BACKTICK = "```";
 // 1. Generate GDD V1 from brainstorming scope summary
 // ============================================================
 
-export function buildGddV1Prompt(project: Project, scopeSummary: string): string {
-  return `Tu es un Game Designer senior dans un studio de jeux vidéo indépendant.
-Tu travailles sur le jeu "${project.title}"${project.description ? ` : ${project.description}` : ""}.
+export function buildGddV1Prompt(
+  project: Project,
+  scopeInput: string,
+  studioContext: string,
+  onePage?: string | null
+): string {
+  const sourceBlock = onePage
+    ? `One Page validé par le directeur :\n---\n${onePage}\n---\n\nComplément de description :\n---\n${scopeInput}\n---`
+    : `Concept du projet :\n---\n${scopeInput}\n---`;
 
-Le directeur de studio a cadré le projet lors d'un brainstorming. Voici le scope validé :
+  return `Tu es un Game Designer senior chez Eden Studio.
 
----
-${scopeSummary}
----
+${studioContext}
 
-En te basant STRICTEMENT sur ce scope, rédige le Game Design Document complet en suivant cette structure :
+Tu travailles sur le jeu "${project.title}".
+
+${sourceBlock}
+
+En te basant STRICTEMENT sur ce concept, rédige le Game Design Document complet en suivant cette structure :
 
 ${GDD_TEMPLATE.replace(/{titre}/g, project.title)}
 
 RÈGLES IMPÉRATIVES :
+- Respecte les contraintes absolues du studio listées dans le contexte ci-dessus
 - Sois 100% fidèle au scope — ne rajoute rien qui n'a pas été mentionné ou qui en découle logiquement
 - Sois spécifique et actionnable pour chaque section
-- Utilise des exemples concrets adaptés au genre et à l'univers décrit
+- Utilise des exemples concrets adaptés au genre et à l'univers Academia Vespana
 - Format : Markdown propre, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation
 - N'échappe jamais le document en JSON ou avec des \\n
 - Langue : Français
@@ -42,9 +51,20 @@ RÈGLES IMPÉRATIVES :
 // 2. Self-critique → generate structured questions
 // ============================================================
 
-export function buildGddCritiquePrompt(project: Project, gddV1: string): string {
-  return `Tu es un Game Designer senior qui vient de rédiger un premier jet de GDD pour "${project.title}".
+export function buildGddCritiquePrompt(
+  project: Project,
+  gddV1: string,
+  studioContext: string,
+  onePage?: string | null
+): string {
+  const onePageBlock = onePage
+    ? `\nOne Page validé (référence) :\n---\n${onePage}\n---\n`
+    : "";
 
+  return `Tu es un Game Designer senior chez Eden Studio qui vient de rédiger un premier jet de GDD pour "${project.title}".
+
+${studioContext}
+${onePageBlock}
 Voici le GDD V1 :
 ---
 ${gddV1}
@@ -56,7 +76,8 @@ Cherche spécifiquement :
 1. Les ambiguïtés qui pourraient bloquer le développement (mécanique floue, scope incertain)
 2. Les choix importants que le GDD a tranché sans confirmation du directeur
 3. Les sections incomplètes ou trop vagues pour être actionnables
-4. Les contradictions internes éventuelles
+4. Les contradictions internes éventuelles${onePage ? "\n5. Les contradictions entre le GDD V1 et la One Page validée" : ""}
+5. Les violations des contraintes studio (monétisation inventée, plateforme non-web, équipe humaine, etc.)
 
 Génère entre 3 et 6 questions ciblées. Pour chaque question :
 - Si la réponse peut être choisie parmi des options prédéfinies, fournis 3-4 options courtes
@@ -85,7 +106,8 @@ export function buildGddV2Prompt(
   project: Project,
   gddV1: string,
   questions: CritiqueQuestion[],
-  answers: Record<string, string>
+  answers: Record<string, string>,
+  studioContext: string
 ): string {
   const qaBlock = questions
     .map((q) => {
@@ -94,7 +116,9 @@ export function buildGddV2Prompt(
     })
     .join("\n\n");
 
-  return `Tu es un Game Designer senior. Tu as rédigé un premier jet de GDD pour "${project.title}" et posé des questions de clarification au directeur de studio. Tu vas maintenant produire la version finale améliorée.
+  return `Tu es un Game Designer senior chez Eden Studio. Tu as rédigé un premier jet de GDD pour "${project.title}" et posé des questions de clarification au directeur de studio. Tu vas maintenant produire la version finale améliorée.
+
+${studioContext}
 
 GDD V1 :
 ---
@@ -111,6 +135,7 @@ Rédige le GDD V2 en intégrant TOUTES les réponses du directeur. Le V2 doit :
 - Mettre à jour, préciser ou corriger chaque section concernée par les réponses
 - Être plus précis et actionnable que le V1
 - Rester fidèle au scope global — pas de nouvelles features non mentionnées
+- Respecter les contraintes absolues du studio listées dans le contexte ci-dessus
 
 RÈGLES IMPÉRATIVES :
 - Format : Markdown propre, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation

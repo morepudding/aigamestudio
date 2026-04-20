@@ -254,7 +254,7 @@ export function Sidebar() {
           </nav>
 
           <div className="mt-auto border-t border-white/10 pt-5">
-            <div className="flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all hover:bg-white/6 cursor-pointer text-muted-foreground hover:text-white">
+            <Link href="/settings" onClick={officeNav.close} className="flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all hover:bg-white/6 cursor-pointer text-muted-foreground hover:text-white">
               <div className="w-9 h-9 rounded-full bg-white/12 flex shrink-0 items-center justify-center overflow-hidden">
                 <span className="text-sm font-bold text-white">RM</span>
               </div>
@@ -263,7 +263,7 @@ export function Sidebar() {
                 <p className="text-sm text-muted-foreground truncate">Producteur</p>
               </div>
               <Settings2 className="w-4 h-4 opacity-50 hover:opacity-100 transition-opacity shrink-0" />
-            </div>
+            </Link>
           </div>
         </aside>
       </>
@@ -334,7 +334,7 @@ export function Sidebar() {
         </nav>
 
         <div className="mt-auto border-t border-white/10 pt-5">
-          <div className="flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all hover:bg-white/6 cursor-pointer text-muted-foreground hover:text-white">
+          <Link href="/settings" className="flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all hover:bg-white/6 cursor-pointer text-muted-foreground hover:text-white">
             <div className="w-9 h-9 rounded-full bg-white/12 flex shrink-0 items-center justify-center overflow-hidden">
                <span className="text-sm font-bold text-white">RM</span>
             </div>
@@ -343,7 +343,7 @@ export function Sidebar() {
                <p className="text-sm text-muted-foreground truncate">Producteur</p>
             </div>
             <Settings2 className="w-4 h-4 opacity-50 hover:opacity-100 transition-opacity shrink-0" />
-          </div>
+          </Link>
         </div>
       </aside>
 

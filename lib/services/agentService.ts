@@ -70,6 +70,8 @@ export interface Agent {
   specialization?: string | null;
   /** LPC pixel spritesheet URL (576×256, 9 frames × 4 directions) */
   lpc_sprite_url?: string | null;
+  /** Prompt métier utilisé lors des tâches pro (One Page, pipeline, reviews). Distinct de la personnalité. */
+  prompt_pro?: string | null;
 }
 
 export async function getAllAgents(): Promise<Agent[]> {

@@ -1,6 +1,23 @@
 import { getAllProjects } from "@/lib/services/projectService";
 import { getAllAgents, Agent } from "@/lib/services/agentService";
-import { getConventions } from "@/lib/services/studioSettingsService";
+import { getConventions, getUniverseLore } from "@/lib/services/studioSettingsService";
+
+// Fixed studio identity — never changes without a deploy
+const STUDIO_FIXED_CONTEXT = `EDEN STUDIO — IDENTITÉ FIXE :
+Eden Studio est un studio de jeu vidéo composé exclusivement d'agents IA.
+Le studio produit des mini-jeux web pédagogiques intégrés dans un Visual Novel hôte via window.postMessage.
+
+UNIVERS HÔTE — Academia Vespana :
+Florence et Paris, 1490. Une école secrète forme les meilleurs espions d'Europe.
+Chaque mini-jeu enseigne une compétence d'espion au joueur dans ce cadre narratif.
+Tous les jeux produits par Eden Studio s'inscrivent dans cet univers.
+
+CONTRAINTES ABSOLUES (ne jamais contredire) :
+- Plateforme : web uniquement — React. Aucun build natif, aucun portage (pas de Switch, PC, Mac standalone).
+- Monétisation : nulle. Les mini-jeux sont gratuits, embarqués dans le VN hôte.
+- Récompenses / progression globale : à définir quand le VN hôte sera terminé. Ne pas inventer de système de récompenses.
+- Intégration technique : chaque mini-jeu communique avec le VN via window.postMessage (score, événement de fin, succès/échec).
+- Équipe : agents IA uniquement — voir liste ci-dessous. Ne pas inventer d'équipe humaine.`;
 
 export interface StudioContext {
   projects: string;
@@ -10,14 +27,16 @@ export interface StudioContext {
 }
 
 /**
- * Builds a compact studio context string for injection into AI prompts.
+ * Builds a complete studio context string for injection into AI prompts.
+ * Combines fixed studio identity + dynamic projects/team + editable lore & conventions.
  * Called server-side in API routes — always fresh, never depends on client.
  */
 export async function buildStudioContext(): Promise<StudioContext> {
-  const [projects, agents, conventions] = await Promise.all([
+  const [projects, agents, conventions, universeLore] = await Promise.all([
     getAllProjects(),
     getAllAgents(),
     getConventions(),
+    getUniverseLore(),
   ]);
 
   const activeProjects = projects.filter(
@@ -41,12 +60,17 @@ export async function buildStudioContext(): Promise<StudioContext> {
           .join("\n")
       : "Aucun collaborateur actif.";
 
+  const teamCount = activeAgents.length;
+
+  const universeLoreBlock = universeLore.trim()
+    ? `\nLore Academia Vespana (détails additionnels) :\n${universeLore.trim()}`
+    : "";
+
   const conventionsBlock = conventions.trim()
     ? `\nConventions studio :\n${conventions.trim()}`
     : "";
 
-  const teamCount = activeAgents.length;
-  const full = `CONTEXTE STUDIO — SOURCE DE VÉRITÉ ABSOLUE (ne jamais inventer au-delà) :
+  const full = `${STUDIO_FIXED_CONTEXT}${universeLoreBlock}
 
 Projets en cours :
 ${projectsBlock}

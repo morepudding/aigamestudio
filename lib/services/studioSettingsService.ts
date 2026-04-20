@@ -26,3 +26,11 @@ export async function getConventions(): Promise<string> {
 export async function setConventions(value: string): Promise<void> {
   return setSetting("conventions", value);
 }
+
+export async function getUniverseLore(): Promise<string> {
+  return getSetting("universe_lore");
+}
+
+export async function setUniverseLore(value: string): Promise<void> {
+  return setSetting("universe_lore", value);
+}

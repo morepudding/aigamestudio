@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -24,8 +24,9 @@ import {
   Trash2,
   ChevronRight,
   Check,
+  FileCode2,
 } from "lucide-react";
-import { AGENT_POSITIONS, PROGRAMMER_SPECIALIZATIONS } from "@/lib/types/agent";
+import { AGENT_POSITIONS, PROGRAMMER_SPECIALIZATIONS, getAgentTitle } from "@/lib/types/agent";
 import type { AgentPosition, ProgrammerSpecialization } from "@/lib/types/agent";
 import { projects } from "@/lib/data/projects";
 import { departments, personalities } from "@/lib/wizard-data";
@@ -213,6 +214,7 @@ const evePhysicalProfile = [
 export default function AgentDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [agent, setAgent] = useState<AgentDetail | null>(null);
+  const personalityAbortRef = useRef<AbortController | null>(null);
   const [memories, setMemories] = useState<AgentMemory[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -227,11 +229,18 @@ export default function AgentDetailPage() {
   const [backstoryExpanded, setBackstoryExpanded] = useState(false);
   const [positionSaving, setPositionSaving] = useState(false);
   const [positionSaved, setPositionSaved] = useState(false);
+  const [activeSkillPrompt, setActiveSkillPrompt] = useState<{ content: string; version: number; updated_at: string } | null>(null);
+  const [skillPromptExpanded, setSkillPromptExpanded] = useState(false);
 
 
   useEffect(() => {
     if (!slug) return;
 
+    // Cancel any in-flight personality fetch from a previous render (React Strict Mode)
+    personalityAbortRef.current?.abort();
+    personalityAbortRef.current = null;
+
+    let cancelled = false;
     setLoading(true);
     setNotFound(false);
 
@@ -241,10 +250,13 @@ export default function AgentDetailPage() {
         return res.json();
       }),
       getAgentMemories(slug),
+      fetch(`/api/agents/${slug}/skill-prompt`).then((res) => res.ok ? res.json() : { prompt: null }),
     ])
-      .then(([agentData, memoriesData]) => {
+      .then(([agentData, memoriesData, skillPromptData]) => {
+        if (cancelled) return;
         setAgent(agentData);
         setMemories(memoriesData);
+        setActiveSkillPrompt(skillPromptData?.prompt ?? null);
         setImageVersion(Date.now());
         if (agentData.personality_bio) {
           // Use cached bio — no LLM call needed
@@ -259,14 +271,22 @@ export default function AgentDetailPage() {
 
           setPersonalityBio("");
           // Generate and cache for next time
-          fetchPersonalityPhrases(agentData);
+          const controller = new AbortController();
+          personalityAbortRef.current = controller;
+          fetchPersonalityPhrases(agentData, controller.signal);
         }
       })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setNotFound(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => {
+      cancelled = true;
+      personalityAbortRef.current?.abort();
+      personalityAbortRef.current = null;
+    };
   }, [slug]);
 
-  const fetchPersonalityPhrases = async (agentData: AgentDetail) => {
+  const fetchPersonalityPhrases = async (agentData: AgentDetail, signal?: AbortSignal) => {
     const traits: { trait: string; label: string; emoji: string; role: "primary" | "nuance" | "secondary" }[] = [];
 
     const addTrait = (field: string | null, role: "primary" | "nuance" | "secondary") => {
@@ -294,6 +314,7 @@ export default function AgentDetailPage() {
       const res = await fetch("/api/ai/personality-phrases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal,
         body: JSON.stringify({
           agentName: agentData.name,
           agentRole: agentData.role,
@@ -308,7 +329,8 @@ export default function AgentDetailPage() {
         setPersonalityBio(bio);
         writePersonalityBioToLocalCache(agentData, bio);
       }
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") return;
       // silently fail — UI degrades to badges
     } finally {
       setPhrasesLoading(false);
@@ -463,7 +485,7 @@ export default function AgentDetailPage() {
             <div className="space-y-4">
               <div className="space-y-1">
                 <h1 className="text-2xl md:text-4xl font-bold text-white">{agent.name}</h1>
-                <p className="text-primary font-medium text-lg md:text-xl">{agent.role}</p>
+                <p className="text-primary font-medium text-lg md:text-xl">{getAgentTitle(agent)}</p>
               </div>
 
               {/* Meta badges — dept, genre, status */}
@@ -846,6 +868,38 @@ export default function AgentDetailPage() {
                     : projects.find((p) => p.id === agent.assigned_project)?.title ?? agent.assigned_project}
                 </span>
               </div>
+            )}
+          </div>
+
+          {/* Prompt Compétence */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <FileCode2 className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-base font-semibold text-white">Prompt Compétence</h2>
+              <AiImpactBadge label="Tâches pipeline" />
+            </div>
+            {activeSkillPrompt ? (
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>v{activeSkillPrompt.version}</span>
+                  <span>{new Date(activeSkillPrompt.updated_at).toLocaleDateString("fr-FR")}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSkillPromptExpanded((v) => !v)}
+                  className="flex items-center gap-1.5 text-xs text-emerald-400/70 hover:text-emerald-400 transition-colors"
+                >
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${skillPromptExpanded ? "rotate-90" : ""}`} />
+                  {skillPromptExpanded ? "Masquer" : "Voir le prompt"}
+                </button>
+                {skillPromptExpanded && (
+                  <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap font-mono bg-black/30 border border-white/8 rounded-xl p-3 leading-relaxed overflow-x-auto">
+                    {activeSkillPrompt.content}
+                  </pre>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground/60 italic">Aucun prompt compétence. Généré automatiquement lors du post-mortem d&apos;un projet.</p>
             )}
           </div>
 

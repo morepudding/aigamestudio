@@ -1,6 +1,7 @@
-import { DeckCard, DeckTheme } from "@/lib/types/deck";
+import { DeckCard, DeckCardType, DeckScope, DeckTheme } from "@/lib/types/deck";
 import { STUDIO_DECK } from "@/lib/data/decks/studio";
 import { EVE_DECK } from "@/lib/data/decks/eve";
+import { supabase } from "@/lib/supabase/client";
 
 /** Registry des decks par agent slug */
 const AGENT_DECKS: Record<string, DeckCard[]> = {
@@ -8,15 +9,51 @@ const AGENT_DECKS: Record<string, DeckCard[]> = {
 };
 
 /**
+ * Charge les cartes validées (accepted = true) depuis la DB pour un agent
+ * ou pour le studio (agentSlug = "studio").
+ */
+export async function fetchAcceptedDbCards(agentSlug: string): Promise<DeckCard[]> {
+  const { data } = await supabase
+    .from("agent_deck_cards")
+    .select("id, card_type, scope, agent_slug, content, themes, min_confidence")
+    .eq("accepted", true)
+    .eq("agent_slug", agentSlug);
+
+  return (data ?? []).map((row: {
+    id: string;
+    card_type: string;
+    scope: string;
+    agent_slug: string;
+    content: string;
+    themes: string[];
+    min_confidence: number;
+  }) => ({
+    id: row.id,
+    type: row.card_type as DeckCardType,
+    scope: row.scope as DeckScope,
+    agentSlug: row.agent_slug,
+    content: row.content,
+    themes: row.themes as DeckTheme[],
+    minConfidence: row.min_confidence,
+  }));
+}
+
+/**
  * Récupère toutes les cartes disponibles pour un agent
- * (deck studio + deck perso de l'agent).
+ * (deck studio + deck perso de l'agent + cartes DB validées).
  */
 export function getAvailableCards(
   agentSlug: string,
   confidenceLevel: number = 0,
+  extraCards: DeckCard[] = [],
 ): DeckCard[] {
   const agentDeck = AGENT_DECKS[agentSlug] ?? [];
-  const allCards = [...STUDIO_DECK, ...agentDeck];
+  // "studio" slug = pas de deck agent statique, juste studio + DB
+  const staticCards = agentSlug === "studio"
+    ? [...STUDIO_DECK]
+    : [...STUDIO_DECK, ...agentDeck];
+
+  const allCards = [...staticCards, ...extraCards];
 
   return allCards.filter((card) => {
     if (card.minConfidence && confidenceLevel < card.minConfidence) return false;
@@ -35,11 +72,12 @@ export function drawCards(
     confidenceLevel?: number;
     recentThemes?: DeckTheme[];
     usedCardIds?: string[];
+    extraCards?: DeckCard[];
   } = {},
 ): DeckCard[] {
-  const { confidenceLevel = 0, recentThemes = [], usedCardIds = [] } = options;
+  const { confidenceLevel = 0, recentThemes = [], usedCardIds = [], extraCards = [] } = options;
 
-  let available = getAvailableCards(agentSlug, confidenceLevel);
+  let available = getAvailableCards(agentSlug, confidenceLevel, extraCards);
 
   // Exclure les cartes déjà utilisées dans cette conversation
   if (usedCardIds.length > 0) {

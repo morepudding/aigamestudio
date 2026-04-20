@@ -6,6 +6,7 @@ import {
 } from "@/lib/services/brainstormingService";
 import { buildGddV2Prompt } from "@/lib/prompts/gddReview";
 import { callOpenRouter, LLM_MODELS, LLM_PARAMS } from "@/lib/config/llm";
+import { buildStudioContext } from "@/lib/services/studioContextService";
 import { normalizeMarkdownDeliverable } from "@/lib/utils";
 
 // POST /api/gdd-review/[projectId]/finalize
@@ -42,7 +43,6 @@ export async function POST(
   const questions = session.gdCritiqueQuestions ?? [];
   const answers = session.gddAnswers ?? {};
 
-  // Validate all questions have answers
   const unanswered = questions.filter((q) => !answers[q.id]);
   if (unanswered.length > 0) {
     return NextResponse.json(
@@ -54,8 +54,9 @@ export async function POST(
     );
   }
 
-  // Generate GDD V2
-  const v2Prompt = buildGddV2Prompt(project, session.gddV1, questions, answers);
+  const { full: studioContext } = await buildStudioContext();
+
+  const v2Prompt = buildGddV2Prompt(project, session.gddV1, questions, answers, studioContext);
   const { content: gddV2Raw } = await callOpenRouter(
     LLM_MODELS.tasks,
     [{ role: "user", content: v2Prompt }],
@@ -64,13 +65,11 @@ export async function POST(
 
   const gddV2 = normalizeMarkdownDeliverable(gddV2Raw);
 
-  // Persist V2 and mark finalized
   await updateSessionGdd(session.id, {
     gddV2,
     gddFinalized: true,
   });
 
-  // Mark project as decisionsReady (repurposed to mean "GDD finalized + pipeline can start")
   await updateProject(projectId, { decisionsReady: true });
 
   return NextResponse.json({ gddV2 });

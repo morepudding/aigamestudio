@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase/client";
 import { MoodRing, type Mood } from "@/components/ui/MoodRing";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceGauge";
 import { TierUnlockPopup } from "@/components/ui/TierUnlockPopup";
+import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
 
 
 interface AgentInfo {
@@ -222,7 +223,10 @@ export function ChatPanel() {
           if (prev.messages.some((m) => m.id === userMsg.id)) return prev;
           return {
             ...prev,
+            awaitingUserReply: false,
             messageCount: prev.messageCount + 1,
+            nudgeCount: 0,
+            nudgeScheduledAt: null,
             messages: [...prev.messages, userMsg],
           };
         });
@@ -280,6 +284,7 @@ export function ChatPanel() {
 
       const replyParts = reply.split("|||").map((p: string) => p.trim()).filter(Boolean);
       const messageType = isDiscoveryTurn ? "discovery" : "normal";
+      const nextNudgeAt = computeNextNudgeAt(agent.personality_primary, 0);
 
       setIsTyping(false);
 
@@ -292,13 +297,22 @@ export function ChatPanel() {
           replyParts[i],
           "agent",
           messageType as "normal" | "discovery",
-          i > 0
+          i > 0,
+          i === replyParts.length - 1
+            ? { nextNudgeAt, nudgeCount: 0 }
+            : undefined
         );
         if (agentMsg) {
           setConversation((prev) => {
             if (!prev || prev.id !== conversationIdAtSend) return prev;
             if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
-            return { ...prev, messages: [...prev.messages, agentMsg] };
+            return {
+              ...prev,
+              awaitingUserReply: true,
+              nudgeCount: 0,
+              nudgeScheduledAt: i === replyParts.length - 1 ? nextNudgeAt : prev.nudgeScheduledAt,
+              messages: [...prev.messages, agentMsg],
+            };
           });
         }
       }

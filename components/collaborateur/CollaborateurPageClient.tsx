@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Users, UserPlus, Info, Trash2, Image as ImageIcon } from "lucide-react";
+import { Users, UserPlus, Info, Trash2, Image as ImageIcon, BookOpen } from "lucide-react";
 import { departments } from "@/lib/wizard-data";
 import { MoodRing, type Mood } from "@/components/ui/MoodRing";
+import { getAgentTitle } from "@/lib/types/agent";
 
 interface AgentCard {
   slug: string;
@@ -17,6 +18,8 @@ interface AgentCard {
   is_system_agent: boolean;
   mood?: string | null;
   icon_url?: string | null;
+  position?: string | null;
+  specialization?: string | null;
 }
 
 const departmentGradients: Record<string, string> = {
@@ -84,6 +87,13 @@ export function CollaborateurPageClient({
           >
             <ImageIcon className="w-4 h-4" />
             Galerie photos
+          </Link>
+          <Link
+            href="/deck/studio"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 bg-white/6 border border-white/12 text-white hover:bg-white/10 rounded-xl text-sm font-medium transition-colors"
+          >
+            <BookOpen className="w-4 h-4" />
+            Deck Studio
           </Link>
           <Link
             href="/collaborateur/recruter"
@@ -159,7 +169,7 @@ export function CollaborateurPageClient({
                     <h3 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">
                       {agent.name}
                     </h3>
-                    <p className="font-medium text-primary text-sm mb-1">{agent.role}</p>
+                    <p className="font-medium text-primary text-sm mb-1">{getAgentTitle(agent)}</p>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Info className="w-3 h-3" />
                       <span>Agent IA</span>

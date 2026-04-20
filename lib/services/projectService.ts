@@ -107,6 +107,14 @@ export async function createProject(
   return toProject(data as DbProject);
 }
 
+export async function deleteProject(id: string): Promise<{ githubRepoName: string | null } | null> {
+  const project = await getProjectById(id);
+  if (!project) return null;
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+  if (error) return null;
+  return { githubRepoName: project.githubRepoName };
+}
+
 export async function transitionToInDev(id: string): Promise<Project | null> {
   return updateProject(id, { status: "in-dev" });
 }

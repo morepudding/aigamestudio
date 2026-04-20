@@ -146,10 +146,10 @@ export const BACKLOG_TEMPLATE = `# Backlog de Développement — {titre}
 ## Items
 
 ### [CORE-001] {Titre de l'item}
-- **Catégorie** : core-gameplay | system | ui | audio | art | network | tooling
+- **Catégorie** : core-gameplay | system | ui | network | tooling
 - **Priorité** : P0 (critique) | P1 (important) | P2 (nice-to-have)
 - **Complexité** : S | M | L | XL
-- **Département** : programming | art | audio | game-design
+- **Département** : programming (UNIQUEMENT — assets visuels en SVG/code, audio procédural ou librairie)
 - **Dépend de** : [CORE-XXX, SYS-XXX]
 - **Description** : Description détaillée de l'item
 - **Critères d'acceptation** :

@@ -606,23 +606,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
     setAutoAssigning(true);
     setActionError(null);
     try {
-      const allTasks = waves.flatMap((w) => w.tasks);
-      const unassigned = allTasks.filter(
-        (t) => !t.assignedAgentSlug && t.status !== "completed" && t.agentDepartment
-      );
-
-      await Promise.all(
-        unassigned.map((task) => {
-          const match = agents.find((a) => a.department === task.agentDepartment);
-          if (!match) return Promise.resolve();
-          return fetch(`/api/pipeline/task/${task.id}/assign`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agentSlug: match.slug }),
-          });
-        })
-      );
-
+      await fetch(`/api/pipeline/${projectId}/auto-assign`, { method: "POST" });
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Erreur lors de l'auto-assignation");

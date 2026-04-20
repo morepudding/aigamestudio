@@ -1,143 +1,89 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Send, ChevronRight, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import {
+  Loader2,
+  Sparkles,
+  RefreshCw,
+  CheckCircle,
+  MessageSquare,
+  X,
+  ChevronRight,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { BrainstormingMessage, BrainstormingSession } from "@/lib/types/brainstorming";
-import type { Agent } from "@/lib/services/agentService";
+import type { BrainstormingSession, OnePageComments, OnePageSection } from "@/lib/types/brainstorming";
 import type { Project } from "@/lib/types/project";
 
 // ============================================================
-// Types
+// Section labels for comments
 // ============================================================
 
-type ApiSessionResponse = {
-  session: BrainstormingSession;
-  messages: BrainstormingMessage[];
+const SECTION_LABELS: Record<OnePageSection, string> = {
+  elevatorPitch: "Elevator Pitch",
+  playerFantasy: "Player Fantasy",
+  coreLoop: "Core Loop",
+  univers: "Univers",
+  perimetreV1: "Périmètre V1",
+  risques: "Risques identifiés",
+  integrationVN: "Intégration VN",
 };
 
-type ApiMessageResponse = {
-  userMessage: BrainstormingMessage;
-  agentMessage: BrainstormingMessage | null;
-  phaseChanged: boolean;
-  currentPhase: string;
-  readyForSynthesis?: boolean;
-};
+const SECTIONS: OnePageSection[] = [
+  "elevatorPitch",
+  "playerFantasy",
+  "coreLoop",
+  "univers",
+  "perimetreV1",
+  "risques",
+  "integrationVN",
+];
 
 // ============================================================
-// Phase labels
+// Comment panel
 // ============================================================
 
-const PHASE_LABELS: Record<string, { label: string; color: string }> = {
-  "game-design": { label: "Game Design", color: "text-violet-300" },
-  "programming": { label: "Technique", color: "text-blue-300" },
-  "art": { label: "Direction artistique", color: "text-pink-300" },
-  "dynamic": { label: "Approfondissement", color: "text-amber-300" },
-  "synthesis": { label: "Synthèse", color: "text-emerald-300" },
-  "completed": { label: "Terminé", color: "text-emerald-300" },
-};
-
-// ============================================================
-// Message bubble
-// ============================================================
-
-function MessageBubble({
-  msg,
-  agentsMap,
+function CommentPanel({
+  section,
+  current,
+  onSave,
+  onClose,
 }: {
-  msg: BrainstormingMessage;
-  agentsMap: Record<string, Agent>;
+  section: OnePageSection;
+  current: string;
+  onSave: (text: string) => void;
+  onClose: () => void;
 }) {
-  const isUser = msg.role === "user";
-  const isSystem = msg.role === "system";
-
-  // Skip internal system messages
-  if (isSystem && msg.questionKey?.startsWith("__")) return null;
-
-  const agent = msg.agentSlug ? agentsMap[msg.agentSlug] : null;
-
-  if (isUser) {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[75%] bg-primary/20 border border-primary/30 rounded-2xl rounded-br-sm px-4 py-3">
-          <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isSystem) {
-    return (
-      <div className="flex justify-center my-2">
-        <span className="text-xs text-muted-foreground/60 bg-white/5 px-3 py-1 rounded-full">
-          {msg.content}
-        </span>
-      </div>
-    );
-  }
+  const [text, setText] = useState(current);
 
   return (
-    <div className="flex gap-3 items-start">
-      {/* Avatar */}
-      <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">
-        {agent?.name.charAt(0) ?? "?"}
-      </div>
-      <div className="flex-1 max-w-[80%]">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold text-foreground">
-            {agent?.name ?? msg.agentSlug ?? "Agent"}
-          </span>
-          {agent?.role && (
-            <span className="text-xs text-muted-foreground">{agent.role}</span>
-          )}
-          {msg.isDynamic && (
-            <span className="text-xs bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded-md">
-              suivi
-            </span>
-          )}
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full sm:max-w-md bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm">{SECTION_LABELS[section]}</h3>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="bg-white/5 border border-white/8 rounded-2xl rounded-tl-sm px-4 py-3">
-          <div className="text-sm text-foreground leading-relaxed">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-                h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-2">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-2">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-medium mt-2 mb-1.5">{children}</h3>,
-                ul: ({ children }) => <ul className="list-disc pl-5 mb-3 last:mb-0 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 last:mb-0 space-y-1">{children}</ol>,
-                li: ({ children }) => <li>{children}</li>,
-                code: ({ children }) => (
-                  <code className="px-1 py-0.5 rounded bg-white/10 text-xs">{children}</code>
-                ),
-                pre: ({ children }) => (
-                  <pre className="bg-white/10 border border-white/10 rounded-lg p-3 overflow-x-auto mb-3 last:mb-0">
-                    {children}
-                  </pre>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="border-l-2 border-white/20 pl-3 italic text-muted-foreground mb-3 last:mb-0">
-                    {children}
-                  </blockquote>
-                ),
-                a: ({ children, href }) => (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary underline underline-offset-2"
-                  >
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {msg.content}
-            </ReactMarkdown>
-          </div>
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={4}
+          placeholder="Ton commentaire sur cette section…"
+          className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 resize-none"
+        />
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/8 border border-white/10 text-sm">
+            Annuler
+          </button>
+          <button
+            onClick={() => { onSave(text); onClose(); }}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold"
+          >
+            Sauvegarder
+          </button>
         </div>
       </div>
     </div>
@@ -145,416 +91,275 @@ function MessageBubble({
 }
 
 // ============================================================
-// Phase progress bar
+// One Page view with per-section comments
 // ============================================================
 
-const PHASES_ORDER = ["game-design", "programming", "art", "dynamic", "synthesis"];
-
-function PhaseBar({
-  currentPhase,
-  phasesCompleted,
+function OnePageView({
+  onePage,
+  comments,
+  onCommentChange,
 }: {
-  currentPhase: string;
-  phasesCompleted: string[];
+  onePage: string;
+  comments: OnePageComments;
+  onCommentChange: (section: OnePageSection, text: string) => void;
 }) {
+  const [activePanel, setActivePanel] = useState<OnePageSection | null>(null);
+
+  const sections = SECTIONS.map((key) => {
+    const label = SECTION_LABELS[key];
+    const comment = comments[key] ?? "";
+    const sectionRegex = new RegExp(`## ${label}([\\s\\S]*?)(?=## |$)`, "i");
+    const match = onePage.match(sectionRegex);
+    const content = match ? match[1].trim() : "";
+    return { key, label, content, comment };
+  });
+
   return (
-    <div className="flex items-center gap-1 px-0 sm:px-4">
-      {PHASES_ORDER.map((phase, i) => {
-        const isDone = phasesCompleted.includes(phase);
-        const isCurrent = currentPhase === phase;
-        const info = PHASE_LABELS[phase];
-        return (
-          <div key={phase} className="flex items-center gap-1 flex-1">
-            <div className="flex-1">
-              <div className={`hidden sm:block text-xs text-center mb-1 font-medium transition-colors ${
-                isCurrent ? info.color : isDone ? "text-muted-foreground" : "text-muted-foreground/30"
-              }`}>
-                {info.label}
+    <>
+      <div className="space-y-6">
+        {sections.map(({ key, label, content, comment }) => (
+          <div key={key} className="group relative">
+            <div className="rounded-xl border border-white/8 bg-white/2 p-4 hover:border-white/15 transition-colors">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+                <button
+                  onClick={() => setActivePanel(key)}
+                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                    comment
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                      : "border-white/10 bg-white/5 text-muted-foreground hover:border-white/20 hover:text-foreground"
+                  }`}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  {comment ? "Modifier" : "Commenter"}
+                </button>
               </div>
-              <div className={`h-1.5 sm:h-1 rounded-full transition-all ${
-                isDone ? "bg-primary" : isCurrent ? "bg-primary/60 animate-pulse" : "bg-white/10"
-              }`} />
+              <div className="prose prose-sm prose-invert max-w-none text-sm text-muted-foreground leading-relaxed">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || "*Non défini*"}</ReactMarkdown>
+              </div>
+              {comment && (
+                <div className="mt-3 pt-3 border-t border-amber-500/20">
+                  <p className="text-xs text-amber-300/80 italic">&ldquo;{comment}&rdquo;</p>
+                </div>
+              )}
             </div>
-            {i < PHASES_ORDER.length - 1 && (
-              <ChevronRight className={`w-2.5 h-2.5 sm:w-3 sm:h-3 shrink-0 mb-0 sm:mb-1 ${isDone ? "text-primary/60" : "text-white/15"}`} />
-            )}
           </div>
-        );
-      })}
-    </div>
+        ))}
+      </div>
+
+      {activePanel && (
+        <CommentPanel
+          section={activePanel}
+          current={comments[activePanel] ?? ""}
+          onSave={(text) => onCommentChange(activePanel, text)}
+          onClose={() => setActivePanel(null)}
+        />
+      )}
+    </>
   );
 }
 
 // ============================================================
-// Main Page
+// Main page
 // ============================================================
 
 export default function BrainstormingPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [project, setProject] = useState<Project | null>(null);
   const [session, setSession] = useState<BrainstormingSession | null>(null);
-  const [messages, setMessages] = useState<BrainstormingMessage[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentsMap, setAgentsMap] = useState<Record<string, Agent>>({});
+  const [onePage, setOnePage] = useState<string | null>(null);
+  const [comments, setComments] = useState<OnePageComments>({});
   const [loading, setLoading] = useState(true);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [startingSession, setStartingSession] = useState(false);
-  const [synthesizing, setSynthesizing] = useState(false);
-  const [readyForSynthesis, setReadyForSynthesis] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const hasComments = Object.values(comments).some((c) => c && c.trim().length > 0);
 
-  // Load project + session + agents
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/projects/${projectId}`).then((r) => r.json()),
-      fetch(`/api/brainstorming/${projectId}/session`).then((r) => r.json()),
-      fetch("/api/agents").then((r) => r.json()),
-    ]).then(([proj, sessionData, agents]: [Project, ApiSessionResponse | null, Agent[]]) => {
-      setProject(proj);
-      setAgents(agents ?? []);
-      if (sessionData?.session) {
-        setSession(sessionData.session);
-        setMessages(sessionData.messages ?? []);
-        // If already at synthesis phase or completed
-        if (
-          sessionData.session.currentPhase === "synthesis" ||
-          sessionData.session.currentPhase === "completed"
-        ) {
-          if (!sessionData.session.scopeSummary) {
-            setReadyForSynthesis(true);
+    async function init() {
+      try {
+        const [projectRes, sessionRes] = await Promise.all([
+          fetch(`/api/projects/${projectId}`),
+          fetch(`/api/brainstorming/${projectId}/session`),
+        ]);
+
+        if (projectRes.ok) setProject(await projectRes.json());
+
+        if (sessionRes.ok) {
+          const data = await sessionRes.json();
+          if (data?.session) {
+            setSession(data.session);
+            if (data.session.onePage) setOnePage(data.session.onePage);
+            if (data.session.onePageComments) setComments(data.session.onePageComments);
           }
         }
-        // If scope already generated → redirect to GDD review
-        if (sessionData.session.scopeSummary && !sessionData.session.gddFinalized) {
-          router.push(`/brainstorming/${projectId}/gdd-review`);
-        }
-        if (sessionData.session.gddFinalized) {
-          router.push(`/projects/${projectId}`);
-        }
+      } finally {
+        setLoading(false);
       }
-      const map: Record<string, Agent> = {};
-      for (const a of agents) map[a.slug] = a;
-      setAgentsMap(map);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [projectId, router]);
-
-  useEffect(() => {
-    if (loading || session || agents.length === 0) return;
-    if (searchParams.get("onboarding") !== "1") return;
-    startBrainstormingSession();
-    // Intentionally only reacts when initial onboarding conditions are met.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session, agents.length, searchParams]);
-
-  function pickDefaultAgents(list: Agent[]): string[] {
-    const byDept = (dept: string) => list.find((a) => a.department === dept)?.slug;
-    const picks = [byDept("game-design"), byDept("programming"), byDept("art")]
-      .filter((slug): slug is string => Boolean(slug));
-
-    if (picks.length === 0 && list.length > 0) {
-      return list.slice(0, 3).map((a) => a.slug);
     }
+    init();
+  }, [projectId]);
 
-    return Array.from(new Set(picks)).slice(0, 3);
-  }
-
-  async function startBrainstormingSession() {
-    if (startingSession || session) return;
-    setStartingSession(true);
+  async function handleGenerate(action: "generate" | "regenerate") {
+    setGenerating(true);
     setError(null);
     try {
-      const agentSlugs = pickDefaultAgents(agents);
-      if (agentSlugs.length === 0) {
-        throw new Error("Aucun collaborateur disponible. Recrute des agents avant de démarrer le brainstorming.");
-      }
-
-      const res = await fetch(`/api/brainstorming/${projectId}/session`, {
+      const res = await fetch(`/api/brainstorming/${projectId}/onepage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentSlugs }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? "Impossible de démarrer le brainstorming");
-      }
-
-      const data: ApiSessionResponse = await res.json();
-      setSession(data.session);
-      setMessages(data.messages ?? []);
-      router.replace(`/brainstorming/${projectId}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue");
-    } finally {
-      setStartingSession(false);
-    }
-  }
-
-  // Auto-scroll
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  async function handleSend() {
-    if (!input.trim() || sending || !session) return;
-    const text = input.trim();
-    setInput("");
-    setSending(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/brainstorming/${projectId}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ action, comments: action === "regenerate" ? comments : undefined }),
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error ?? "Erreur");
+        throw new Error(data.error ?? "Erreur lors de la génération");
       }
-      const data: ApiMessageResponse = await res.json();
-
-      // Add messages to state
-      const newMsgs: BrainstormingMessage[] = [];
-      if (data.userMessage) newMsgs.push(data.userMessage);
-      if (data.agentMessage) newMsgs.push(data.agentMessage);
-      setMessages((prev) => [...prev, ...newMsgs]);
-
-      // Update session phase
-      if (data.phaseChanged && session) {
-        setSession((prev) =>
-          prev ? { ...prev, currentPhase: data.currentPhase as BrainstormingSession["currentPhase"] } : prev
-        );
-      }
-
-      if (data.readyForSynthesis) {
-        setReadyForSynthesis(true);
-      }
+      const data = await res.json();
+      setOnePage(data.onePage);
+      setComments({});
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setSending(false);
-      inputRef.current?.focus();
+      setGenerating(false);
     }
   }
 
-  async function handleSynthesize() {
-    if (synthesizing) return;
-    setSynthesizing(true);
+  async function handleCommentChange(section: OnePageSection, text: string) {
+    const updated = { ...comments, [section]: text };
+    if (!text.trim()) delete updated[section];
+    setComments(updated);
+
+    await fetch(`/api/brainstorming/${projectId}/onepage`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "comment", comments: updated }),
+    });
+  }
+
+  async function handleValidate() {
+    setValidating(true);
     setError(null);
     try {
-      const res = await fetch(`/api/brainstorming/${projectId}/synthesize`, {
-        method: "POST",
+      const res = await fetch(`/api/brainstorming/${projectId}/onepage`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "validate" }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Erreur lors de la synthèse");
-      }
-      // Redirect to GDD review
+      if (!res.ok) throw new Error("Erreur lors de la validation");
       router.push(`/brainstorming/${projectId}/gdd-review`);
     } catch (err) {
       setError((err as Error).message);
-      setSynthesizing(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      setValidating(false);
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Chargement du brainstorming…
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  if (!session) {
-    return (
-      <div className="flex items-center justify-center h-screen px-6">
-        <div className="max-w-xl w-full rounded-2xl border border-white/10 bg-card/60 backdrop-blur-sm p-6 text-center space-y-4">
-          <div className="w-12 h-12 mx-auto rounded-xl bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-indigo-300" />
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+          <span>Catalogue</span>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground">{project?.title ?? projectId}</span>
+          <ChevronRight className="w-3 h-3" />
+          <span>One Page</span>
+        </div>
+        <h1 className="text-2xl font-extrabold text-foreground">One Page Design Document</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {onePage
+            ? "Lis, commente chaque section, puis régénère ou valide."
+            : "L'agent va générer le One Page à partir de ton brief."}
+        </p>
+      </div>
+
+      {/* Brief recap */}
+      {session?.gameBrief && (
+        <div className="mb-6 p-4 rounded-xl border border-white/8 bg-white/2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <span className="bg-white/8 px-2 py-1 rounded-md">{session.gameBrief.genre}</span>
+          <span className="bg-white/8 px-2 py-1 rounded-md">{session.gameBrief.sessionDuration}</span>
+          {session.gameBrief.referenceGame && (
+            <span className="bg-white/8 px-2 py-1 rounded-md">Réf: {session.gameBrief.referenceGame}</span>
+          )}
+          <span className="bg-white/8 px-2 py-1 rounded-md flex-1 min-w-0 truncate">{session.gameBrief.theme}</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 px-4 py-3 rounded-xl border border-red-500/20 bg-red-500/10 text-xs text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* No One Page yet */}
+      {!onePage && (
+        <div className="flex flex-col items-center justify-center py-20 text-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Sparkles className="w-8 h-8 text-primary" />
           </div>
-          <div className="space-y-1">
-            <h2 className="text-lg font-bold text-foreground">Démarrer le brainstorming</h2>
-            <p className="text-sm text-muted-foreground">
-              Aucune session n&apos;existe encore pour ce projet. Lance un brainstorming pour cadrer le scope et générer le GDD.
+          <div>
+            <p className="font-semibold text-foreground mb-1">Prêt à générer</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              L&apos;agent va lire ton brief et produire le One Page Design Document.
             </p>
           </div>
           <button
-            onClick={startBrainstormingSession}
-            disabled={startingSession}
-            className="mx-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold transition-all disabled:opacity-50"
+            onClick={() => handleGenerate("generate")}
+            disabled={generating}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 font-semibold transition-all disabled:opacity-50"
           >
-            {startingSession ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Démarrage…</>
-            ) : (
-              <><Sparkles className="w-4 h-4" /> Lancer le brainstorming</>
-            )}
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {generating ? "Génération en cours…" : "Générer le One Page"}
           </button>
-          {error && (
-            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
         </div>
-      </div>
-    );
-  }
+      )}
 
-  const isCompleted =
-    session.currentPhase === "completed" || !!session.scopeSummary;
-
-  return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-white/8 bg-card/50 backdrop-blur-sm px-4 sm:px-6 py-3 sm:py-4 shrink-0">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h1 className="font-bold text-base sm:text-lg">
-                Brainstorming — {project?.title ?? projectId}
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                {session.agentSlugs.map((s) => agentsMap[s]?.name ?? s).join(", ")}
-              </p>
-            </div>
-            <div className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-              isCompleted
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-primary/30 bg-primary/10 text-primary"
-            }`}>
-              {isCompleted ? "Brainstorming terminé" : PHASE_LABELS[session.currentPhase]?.label ?? session.currentPhase}
-            </div>
-          </div>
-          <PhaseBar
-            currentPhase={session.currentPhase}
-            phasesCompleted={session.phasesCompleted}
+      {/* One Page content */}
+      {onePage && (
+        <>
+          <OnePageView
+            onePage={onePage}
+            comments={comments}
+            onCommentChange={handleCommentChange}
           />
-        </div>
-      </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6">
-        <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4">
-          {messages
-            .filter((m) => !(m.role === "system" && m.questionKey?.startsWith("__")))
-            .map((msg) => (
-              <MessageBubble key={msg.id} msg={msg} agentsMap={agentsMap} />
-            ))}
+          {/* Actions */}
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-white/8">
+            <button
+              onClick={() => handleGenerate("regenerate")}
+              disabled={generating || validating || !hasComments}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-white/15 bg-white/5 hover:bg-white/8 text-sm font-medium transition-all disabled:opacity-40"
+            >
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Régénérer avec mes commentaires
+            </button>
 
-          {/* Loading indicator while agent responds */}
-          {sending && (
-            <div className="flex gap-3 items-start">
-              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0 mt-0.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-              </div>
-              <div className="bg-white/5 border border-white/8 rounded-2xl rounded-tl-sm px-4 py-3">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div ref={bottomRef} />
-        </div>
-      </div>
-
-      {/* Synthesis CTA */}
-      {readyForSynthesis && !isCompleted && (
-        <div className="shrink-0 border-t border-white/8 bg-emerald-500/5 px-4 sm:px-6 py-4">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-emerald-300">Le brainstorming est terminé !</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Prêt à synthétiser le scope et passer à la génération du GDD.
-                </p>
-              </div>
-              <button
-                onClick={handleSynthesize}
-                disabled={synthesizing}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-500 text-white hover:bg-emerald-400 text-sm font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
-              >
-                {synthesizing ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Synthèse en cours…</>
-                ) : (
-                  <><Sparkles className="w-3.5 h-3.5" /> Générer le scope &amp; le GDD</>
-                )}
-              </button>
-            </div>
+            <button
+              onClick={handleValidate}
+              disabled={validating || generating}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-all disabled:opacity-50 shadow-lg shadow-emerald-900/30"
+            >
+              {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Valider le One Page
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* Completed state */}
-      {isCompleted && (
-        <div className="shrink-0 border-t border-white/8 bg-card/50 px-6 py-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <p className="text-sm text-muted-foreground">
-              Brainstorming archivé.{" "}
-              <button
-                onClick={() => router.push(`/brainstorming/${projectId}/gdd-review`)}
-                className="text-primary hover:underline font-medium"
-              >
-                Voir la révision du GDD →
-              </button>
+          {!hasComments && (
+            <p className="text-xs text-muted-foreground/50 text-center mt-3">
+              Commente au moins une section pour pouvoir régénérer
             </p>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      {!isCompleted && !readyForSynthesis && (
-        <div className="shrink-0 border-t border-white/8 bg-card/50 px-3 sm:px-6 py-3 sm:py-4">
-          <div className="max-w-3xl mx-auto">
-            {error && (
-              <p className="text-xs text-red-400 mb-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-            <div className="flex gap-3 items-end">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ta réponse… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
-                rows={2}
-                disabled={sending}
-                className="flex-1 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50 resize-none transition-colors disabled:opacity-50"
-              />
-              <button
-                onClick={handleSend}
-                disabled={sending || !input.trim()}
-                className="w-11 h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 flex items-center justify-center transition-all disabled:opacity-40 shrink-0"
-              >
-                {sending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );

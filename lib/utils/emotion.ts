@@ -42,16 +42,24 @@ function classifyEmotion(emotion: string): EmotionType {
 
 const EMOTION_REGEX = /\[émotion\s*:\s*([^\]]+)\]/i;
 
-/** Also strip stray *action* didascalies defensively (fallback) */
-const ACTION_REGEX = /\*[^*]{1,60}\*/g;
+/**
+ * Preserve emphasized markdown content while removing the marker characters.
+ * This avoids truncating messages that use *italics* or **bold** for style.
+ */
+const BOLD_MARKDOWN_REGEX = /\*\*([^*]+)\*\*/g;
+const ITALIC_MARKDOWN_REGEX = /\*([^*]+)\*/g;
 
 export function parseEmotion(content: string): ParsedMessage {
   const match = content.match(EMOTION_REGEX);
 
   // Strip [émotion: ...] tag
   let text = content.replace(EMOTION_REGEX, "").trim();
-  // Defensive: strip any remaining *action* didascalies
-  text = text.replace(ACTION_REGEX, "").replace(/\s{2,}/g, " ").trim();
+  // Remove markdown markers but keep the wrapped content.
+  text = text
+    .replace(BOLD_MARKDOWN_REGEX, "$1")
+    .replace(ITALIC_MARKDOWN_REGEX, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
   if (!match) return { text, emotion: null, emotionType: null };
 

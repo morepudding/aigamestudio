@@ -13,6 +13,7 @@ import {
   extractMemories,
   shouldTriggerDiscovery,
 } from "@/lib/services/chatService";
+import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
 import {
   getAgentMemories,
   buildMemoryContextState,
@@ -206,6 +207,7 @@ export default function ChatSlugPage() {
       // Split multi-bubble messages (|||) and send each as a separate message
       const replyParts = reply.split("|||").map((p: string) => p.trim()).filter(Boolean);
       const messageType = isDiscoveryTurn ? "discovery" : "normal";
+      const nextNudgeAt = computeNextNudgeAt(agent.personality_primary, 0);
 
       for (let i = 0; i < replyParts.length; i++) {
         // Small delay between bubbles to simulate real typing
@@ -217,13 +219,22 @@ export default function ChatSlugPage() {
           replyParts[i],
           "agent",
           messageType as "normal" | "discovery",
-          i > 0 // skipBlockingCheck for follow-up bubbles
+          i > 0, // skipBlockingCheck for follow-up bubbles
+          i === replyParts.length - 1
+            ? { nextNudgeAt, nudgeCount: 0 }
+            : undefined
         );
         if (agentMsg) {
           setConversation((prev) => {
             if (!prev) return prev;
             if (prev.messages.some((m) => m.id === agentMsg.id)) return prev;
-            return { ...prev, messages: [...prev.messages, agentMsg] };
+            return {
+              ...prev,
+              awaitingUserReply: true,
+              nudgeCount: 0,
+              nudgeScheduledAt: i === replyParts.length - 1 ? nextNudgeAt : prev.nudgeScheduledAt,
+              messages: [...prev.messages, agentMsg],
+            };
           });
         }
       }

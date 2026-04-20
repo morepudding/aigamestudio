@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
 import { Conversation, ConversationSummary, Message, MessageType } from "@/lib/types/chat";
 import { perfLog } from "@/lib/utils/perf";
 
@@ -60,6 +61,8 @@ type DbConversation = {
   awaiting_user_reply: boolean;
   discovery_rhythm: number;
   message_count: number;
+  nudge_count: number;
+  nudge_scheduled_at: number | null;
   last_message_at: number;
   created_at: number;
   messages?: DbMessage[];
@@ -82,6 +85,8 @@ function toConversation(row: DbConversation, msgs: DbMessage[] = []): Conversati
     awaitingUserReply: row.awaiting_user_reply,
     discoveryRhythm: row.discovery_rhythm ?? 5,
     messageCount: row.message_count ?? 0,
+    nudgeCount: row.nudge_count ?? 0,
+    nudgeScheduledAt: row.nudge_scheduled_at ?? null,
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     messages: msgs.map(toMessage),
@@ -217,6 +222,8 @@ export async function initConversation(
     awaiting_user_reply: true,
     discovery_rhythm: 5,
     message_count: 0,
+    nudge_count: 0,
+    nudge_scheduled_at: computeNextNudgeAt(personalityPrimary, 0),
     last_message_at: now,
     created_at: now,
   });
@@ -251,6 +258,8 @@ export async function initConversation(
     awaitingUserReply: true,
     discoveryRhythm: 5,
     messageCount: 0,
+    nudgeCount: 0,
+    nudgeScheduledAt: computeNextNudgeAt(personalityPrimary, 0),
     messages: [toMessage(welcomeMsg)],
     lastMessageAt: now,
     createdAt: now,
@@ -302,12 +311,16 @@ export async function sendMessage(
   content: string,
   sender: "user" | "agent" = "user",
   messageType: MessageType = "normal",
-  skipBlockingCheck = false
+  skipBlockingCheck = false,
+  options: {
+    nextNudgeAt?: number | null;
+    nudgeCount?: number;
+  } = {}
 ): Promise<Message | null> {
   // Fetch current convo to check blocking rule
   const { data: convRow, error: convErr } = await supabase
     .from("conversations")
-    .select("awaiting_user_reply, message_count")
+    .select("awaiting_user_reply, message_count, nudge_count")
     .eq("id", conversationId)
     .single();
 
@@ -331,14 +344,27 @@ export async function sendMessage(
   if (msgErr) return null;
 
   const currentCount = (convRow as { message_count: number }).message_count ?? 0;
+  const currentNudgeCount = (convRow as { nudge_count?: number }).nudge_count ?? 0;
+
+  const conversationUpdate = sender === "user"
+    ? {
+        last_message_at: now,
+        awaiting_user_reply: false,
+        message_count: currentCount + 1,
+        nudge_count: 0,
+        nudge_scheduled_at: null,
+      }
+    : {
+        last_message_at: now,
+        awaiting_user_reply: true,
+        message_count: currentCount,
+        nudge_count: options.nudgeCount ?? currentNudgeCount,
+        nudge_scheduled_at: options.nextNudgeAt ?? null,
+      };
 
   await supabase
     .from("conversations")
-    .update({
-      last_message_at: now,
-      awaiting_user_reply: sender === "agent",
-      message_count: sender === "user" ? currentCount + 1 : currentCount,
-    })
+    .update(conversationUpdate)
     .eq("id", conversationId);
 
   return toMessage(msg);

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, TOPIC_DIVERSITY_RULE, PERSONAL_LIFE_RULE, buildTimeContext } from "@/lib/prompts/rules";
+import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, NO_UNSOLICITED_PITCH_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, NICKNAME_RULES, TOPIC_DIVERSITY_RULE, PERSONAL_LIFE_RULE, buildTimeContext, buildAntiRepeatBlock } from "@/lib/prompts/rules";
 import { buildStudioContext } from "@/lib/services/studioContextService";
-import { drawCards, buildDeckPromptBlock } from "@/lib/services/deckService";
-import { LLM_MODELS } from "@/lib/config/llm";
+import { drawCards, buildDeckPromptBlock, fetchAcceptedDbCards } from "@/lib/services/deckService";
+import { LLM_MODELS, LLM_PARAMS } from "@/lib/config/llm";
 import { increaseConfidence } from "@/lib/services/agentService";
 import { getTierForLevel } from "@/lib/config/confidenceTiers";
 
@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
     confidenceLevel?: number;
     agentSlug?: string;
     usedDeckCardIds?: string[];
+    modelOverride?: string;
   };
 
   if (!name || !personalityPrimary || !userMessage) {
@@ -93,10 +94,21 @@ export async function POST(req: NextRequest) {
 
   const timeBlock = `\n\n${buildTimeContext()}`;
 
+  const recentAgentReplies = (conversationHistory ?? [])
+    .filter((m) => m.sender !== "user")
+    .slice(-4)
+    .map((m) => m.content);
+  const antiRepeatBlock = buildAntiRepeatBlock(recentAgentReplies);
+
   const agentSlug = body.agentSlug ?? name.toLowerCase();
+  const [dbCards, studioDbCards] = await Promise.all([
+    fetchAcceptedDbCards(agentSlug),
+    fetchAcceptedDbCards("studio"),
+  ]);
   const drawnCards = drawCards(agentSlug, 3, {
     confidenceLevel: cl,
     usedCardIds: body.usedDeckCardIds ?? [],
+    extraCards: [...dbCards, ...studioDbCards],
   });
   const deckBlock = buildDeckPromptBlock(drawnCards);
 
@@ -121,11 +133,12 @@ RÈGLES :
 - Tu tutoies ton boss (Romain).
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
+${NO_UNSOLICITED_PITCH_RULE}
 ${TOPIC_DIVERSITY_RULE}
 ${PERSONAL_LIFE_RULE}
-${ANTI_HALLUCINATION_RULE}${deckBlock ? `\n\n${deckBlock}` : ""}`;
+${ANTI_HALLUCINATION_RULE}${antiRepeatBlock}${deckBlock ? `\n\n${deckBlock}` : ""}`;
 
-  const history = (conversationHistory ?? []).slice(-10).map((m) => ({
+  const history = (conversationHistory ?? []).slice(-20).map((m) => ({
     role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
     content: m.content,
   }));
@@ -143,10 +156,10 @@ ${ANTI_HALLUCINATION_RULE}${deckBlock ? `\n\n${deckBlock}` : ""}`;
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: LLM_MODELS.chat,
+      model: body.modelOverride ?? LLM_MODELS.chat,
       messages,
-      max_tokens: 500,
-      temperature: 0.75,
+      max_tokens: LLM_PARAMS.chat.max_tokens,
+      temperature: LLM_PARAMS.chat.temperature,
     }),
   });
 

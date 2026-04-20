@@ -3,7 +3,10 @@
     "allow": [
       "Bash(xargs grep *)",
       "Bash(wmic path *)",
-      "Bash(nvidia-smi)"
+      "Bash(nvidia-smi)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git stash *)"
     ]
   }
 }

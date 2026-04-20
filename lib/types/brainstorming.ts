@@ -1,20 +1,49 @@
 // Brainstorming system types
-// Multi-agent wizard that scopes the game concept before GDD generation.
+// Phase 1: GameBrief (template rapide) → Phase 2: One Page généré + commentaires par section → GDD pipeline
+
+// ============================================================
+// Game Brief — rempli par le créateur en Phase 1
+// ============================================================
+
+export type GameGenre = "action" | "puzzle" | "stealth" | "arcade" | "rpg" | "autre";
+export type SessionDuration = "2min" | "5min" | "15min";
+
+export interface GameBrief {
+  genre: GameGenre;
+  sessionDuration: SessionDuration;
+  referenceGame: string;
+  theme: string;
+}
+
+// ============================================================
+// One Page — sections commentables
+// ============================================================
+
+export type OnePageSection =
+  | "elevatorPitch"
+  | "playerFantasy"
+  | "coreLoop"
+  | "univers"
+  | "perimetreV1"
+  | "risques"
+  | "integrationVN";
+
+export type OnePageComments = Partial<Record<OnePageSection, string>>;
+
+// ============================================================
+// Session & messages (conservés pour compatibilité pipeline GDD)
+// ============================================================
 
 export type BrainstormingPhase =
-  | "game-design" // Game Designer questions (concept, genre, core loop, audience, scope)
-  | "programming" // Programmer questions (platform, engine, constraints)
-  | "art"         // Artist questions (mood, visual style, references)
-  | "dynamic"     // AI-generated follow-up questions based on previous answers
-  | "synthesis"   // AI synthesizes scope summary
-  | "completed";  // Brainstorming done, ready for GDD generation
+  | "brief"      // Phase 1: template rapide
+  | "one-page"   // Phase 2: One Page généré + commentaires
+  | "completed"; // One Page validé, prêt pour la GDD pipeline
 
 export type BrainstormingMessageRole = "user" | "agent" | "system";
 
 export interface CritiqueQuestion {
   id: string;
   question: string;
-  /** If provided: render as radio/select choices. If null: free text. */
   options: string[] | null;
 }
 
@@ -37,6 +66,13 @@ export interface BrainstormingSession {
   agentSlugs: string[];
   currentPhase: BrainstormingPhase;
   phasesCompleted: BrainstormingPhase[];
+  // Phase 1
+  gameBrief: GameBrief | null;
+  // Phase 2
+  onePage: string | null;
+  onePageComments: OnePageComments | null;
+  onePageValidated: boolean;
+  // Legacy GDD fields (conservés pour la pipeline GDD existante)
   scopeSummary: string | null;
   gddV1: string | null;
   gdCritiqueQuestions: CritiqueQuestion[] | null;
@@ -47,22 +83,7 @@ export interface BrainstormingSession {
   updatedAt: string;
 }
 
-// Ordered list of agent phases (maps department → phase name)
-export const PHASE_ORDER: BrainstormingPhase[] = [
-  "game-design",
-  "programming",
-  "art",
-  "dynamic",
-  "synthesis",
-  "completed",
-];
-
-// Department responsible for each brainstorming phase
-export const PHASE_DEPARTMENT: Record<string, string> = {
-  "game-design": "game-design",
-  "programming": "programming",
-  "art": "art",
-};
+export const PHASE_ORDER: BrainstormingPhase[] = ["brief", "one-page", "completed"];
 
 export function getNextPhase(current: BrainstormingPhase): BrainstormingPhase {
   const idx = PHASE_ORDER.indexOf(current);

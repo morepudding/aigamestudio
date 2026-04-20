@@ -4,7 +4,7 @@
 // Code: DeepSeek V3 (agentic coding loop with tool calling)
 
 export const LLM_MODELS = {
-  chat: "x-ai/grok-4.1-fast",
+  chat: "mistralai/mistral-small-creative",
   tasks: "deepseek/deepseek-chat-v3-0324",
   // Upgrade to "anthropic/claude-sonnet-4" for complex codebases
   code: "deepseek/deepseek-chat-v3-0324",
@@ -15,7 +15,7 @@ export type LLMModel = (typeof LLM_MODELS)[keyof typeof LLM_MODELS];
 export const LLM_PARAMS = {
   chat: {
     temperature: 0.75,
-    max_tokens: 500,
+    max_tokens: 350,
   },
   tasks: {
     temperature: 0.4,

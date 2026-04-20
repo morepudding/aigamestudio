@@ -19,6 +19,8 @@ export interface Conversation {
   messages: Message[];
   lastMessageAt: number;
   createdAt: number;
+  nudgeCount: number;
+  nudgeScheduledAt: number | null;
 }
 
 /** Version allégée pour le hub — ne contient pas l'historique complet */

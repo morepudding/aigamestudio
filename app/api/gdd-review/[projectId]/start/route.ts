@@ -6,11 +6,12 @@ import {
 } from "@/lib/services/brainstormingService";
 import { buildGddV1Prompt, buildGddCritiquePrompt } from "@/lib/prompts/gddReview";
 import { callOpenRouter, LLM_MODELS, LLM_PARAMS } from "@/lib/config/llm";
+import { buildStudioContext } from "@/lib/services/studioContextService";
 import { normalizeMarkdownDeliverable } from "@/lib/utils";
 import type { CritiqueQuestion } from "@/lib/types/brainstorming";
 
 // POST /api/gdd-review/[projectId]/start
-// 1. Generates GDD V1 from the scope summary
+// 1. Generates GDD V1 from the scope summary (or One Page if available)
 // 2. AI self-critiques the V1 and generates structured questions
 // Returns: { gddV1, critiqueQuestions }
 export async function POST(
@@ -32,13 +33,6 @@ export async function POST(
     );
   }
 
-  if (!session.scopeSummary) {
-    return NextResponse.json(
-      { error: "Scope summary not yet generated. Complete brainstorming and synthesize first." },
-      { status: 409 }
-    );
-  }
-
   if (session.gddFinalized) {
     return NextResponse.json(
       { error: "GDD already finalized." },
@@ -55,8 +49,14 @@ export async function POST(
     });
   }
 
+  const { full: studioContext } = await buildStudioContext();
+
   // Step 1: Generate GDD V1
-  const v1Prompt = buildGddV1Prompt(project, session.scopeSummary);
+  // Prefer validated One Page as scope source; fall back to scopeSummary or project.description
+  const scopeInput = session.scopeSummary ?? project.description;
+  const onePage = session.onePageValidated ? (session.onePage ?? null) : null;
+
+  const v1Prompt = buildGddV1Prompt(project, scopeInput, studioContext, onePage);
   const { content: gddV1Raw } = await callOpenRouter(
     LLM_MODELS.tasks,
     [{ role: "user", content: v1Prompt }],
@@ -66,7 +66,7 @@ export async function POST(
   const gddV1 = normalizeMarkdownDeliverable(gddV1Raw);
 
   // Step 2: Self-critique → generate structured questions
-  const critiquePrompt = buildGddCritiquePrompt(project, gddV1);
+  const critiquePrompt = buildGddCritiquePrompt(project, gddV1, studioContext, onePage);
   const { content: critiqueJson } = await callOpenRouter(
     LLM_MODELS.tasks,
     [{ role: "user", content: critiquePrompt }],
@@ -78,7 +78,6 @@ export async function POST(
     const parsed = JSON.parse(critiqueJson.trim());
     critiqueQuestions = Array.isArray(parsed) ? parsed : [];
   } catch {
-    // If JSON parse fails, create a single open question
     critiqueQuestions = [
       {
         id: "q1",
@@ -88,7 +87,6 @@ export async function POST(
     ];
   }
 
-  // Persist to session
   await updateSessionGdd(session.id, {
     gddV1,
     gdCritiqueQuestions: critiqueQuestions,

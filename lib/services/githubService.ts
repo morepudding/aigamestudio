@@ -111,6 +111,19 @@ function getOctokit(): Octokit {
 // ============================================================
 
 /**
+ * Delete a GitHub repository. Silently ignores 404 (already deleted).
+ */
+export async function deleteRepo(name: string): Promise<void> {
+  const octokit = getOctokit();
+  try {
+    await octokit.repos.delete({ owner: GITHUB_OWNER, repo: name });
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) return;
+    throw err;
+  }
+}
+
+/**
  * Create a new private GitHub repository under the owner account.
  * Idempotent: if the repo already exists, returns its info instead of throwing.
  */

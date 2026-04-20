@@ -4,6 +4,8 @@ import type {
   BrainstormingMessage,
   BrainstormingPhase,
   CritiqueQuestion,
+  GameBrief,
+  OnePageComments,
 } from "@/lib/types/brainstorming";
 
 // ============================================================
@@ -16,6 +18,10 @@ type DbSession = {
   agent_slugs: string[];
   current_phase: string;
   phases_completed: string[];
+  game_brief: GameBrief | null;
+  one_page: string | null;
+  one_page_comments: OnePageComments | null;
+  one_page_validated: boolean;
   scope_summary: string | null;
   gdd_v1: string | null;
   gdd_critique_questions: CritiqueQuestion[] | null;
@@ -46,6 +52,10 @@ function toSession(row: DbSession): BrainstormingSession {
     agentSlugs: row.agent_slugs ?? [],
     currentPhase: row.current_phase as BrainstormingPhase,
     phasesCompleted: (row.phases_completed ?? []) as BrainstormingPhase[],
+    gameBrief: row.game_brief,
+    onePage: row.one_page,
+    onePageComments: row.one_page_comments,
+    onePageValidated: row.one_page_validated ?? false,
     scopeSummary: row.scope_summary,
     gddV1: row.gdd_v1,
     gdCritiqueQuestions: row.gdd_critique_questions,
@@ -78,15 +88,17 @@ function toMessage(row: DbMessage): BrainstormingMessage {
 
 export async function createSession(
   projectId: string,
-  agentSlugs: string[]
+  agentSlugs: string[],
+  gameBrief?: GameBrief
 ): Promise<BrainstormingSession | null> {
   const { data, error } = await supabase
     .from("brainstorming_sessions")
     .insert({
       project_id: projectId,
       agent_slugs: agentSlugs,
-      current_phase: "game-design",
+      current_phase: "brief",
       phases_completed: [],
+      game_brief: gameBrief ?? null,
       gdd_finalized: false,
     })
     .select()
@@ -97,7 +109,6 @@ export async function createSession(
     return null;
   }
 
-  // Link session to project
   await supabase
     .from("projects")
     .update({ brainstorming_session_id: data.id })
@@ -134,31 +145,24 @@ export async function getSessionById(
   return toSession(data as DbSession);
 }
 
-export async function updateSessionPhase(
+export async function updateSessionOnePage(
   sessionId: string,
-  newPhase: BrainstormingPhase,
-  completedPhase?: BrainstormingPhase
+  fields: {
+    onePage?: string;
+    onePageComments?: OnePageComments | null;
+    onePageValidated?: boolean;
+    currentPhase?: BrainstormingPhase;
+  }
 ): Promise<void> {
-  const session = await getSessionById(sessionId);
-  if (!session) return;
-
-  const phasesCompleted = completedPhase
-    ? [...new Set([...session.phasesCompleted, completedPhase])]
-    : session.phasesCompleted;
+  const dbFields: Record<string, unknown> = {};
+  if (fields.onePage !== undefined) dbFields.one_page = fields.onePage;
+  if (fields.onePageComments !== undefined) dbFields.one_page_comments = fields.onePageComments;
+  if (fields.onePageValidated !== undefined) dbFields.one_page_validated = fields.onePageValidated;
+  if (fields.currentPhase !== undefined) dbFields.current_phase = fields.currentPhase;
 
   await supabase
     .from("brainstorming_sessions")
-    .update({ current_phase: newPhase, phases_completed: phasesCompleted })
-    .eq("id", sessionId);
-}
-
-export async function updateSessionScope(
-  sessionId: string,
-  scopeSummary: string
-): Promise<void> {
-  await supabase
-    .from("brainstorming_sessions")
-    .update({ scope_summary: scopeSummary, current_phase: "completed" })
+    .update(dbFields)
     .eq("id", sessionId);
 }
 
@@ -186,7 +190,7 @@ export async function updateSessionGdd(
 }
 
 // ============================================================
-// Message CRUD
+// Messages (used by session GET to return existing messages)
 // ============================================================
 
 export async function getSessionMessages(
@@ -200,59 +204,4 @@ export async function getSessionMessages(
 
   if (error || !data) return [];
   return (data as DbMessage[]).map(toMessage);
-}
-
-export async function addMessage(msg: {
-  sessionId: string;
-  role: BrainstormingMessage["role"];
-  agentSlug: string | null;
-  phase: BrainstormingPhase;
-  content: string;
-  isDynamic?: boolean;
-  questionKey?: string | null;
-}): Promise<BrainstormingMessage | null> {
-  // Get current max sort_order for this session
-  const { data: last } = await supabase
-    .from("brainstorming_messages")
-    .select("sort_order")
-    .eq("session_id", msg.sessionId)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .single();
-
-  const sortOrder = ((last as { sort_order: number } | null)?.sort_order ?? -1) + 1;
-
-  const { data, error } = await supabase
-    .from("brainstorming_messages")
-    .insert({
-      session_id: msg.sessionId,
-      role: msg.role,
-      agent_slug: msg.agentSlug,
-      phase: msg.phase,
-      content: msg.content,
-      is_dynamic: msg.isDynamic ?? false,
-      question_key: msg.questionKey ?? null,
-      sort_order: sortOrder,
-    })
-    .select()
-    .single();
-
-  if (error || !data) {
-    console.error("[brainstormingService] addMessage error:", error);
-    return null;
-  }
-  return toMessage(data as DbMessage);
-}
-
-// Returns all messages for a session formatted as a conversation transcript
-export async function getConversationTranscript(
-  sessionId: string
-): Promise<string> {
-  const messages = await getSessionMessages(sessionId);
-  return messages
-    .map((m) => {
-      const speaker = m.role === "user" ? "Directeur" : m.agentSlug ?? "Système";
-      return `[${speaker}]: ${m.content}`;
-    })
-    .join("\n\n");
 }

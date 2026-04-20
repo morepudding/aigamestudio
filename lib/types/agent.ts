@@ -64,6 +64,38 @@ export const PROGRAMMER_SPECIALIZATIONS: {
   },
 ];
 
+const DEPARTMENT_LABELS: Record<string, string> = {
+  art: "Designer",
+  programming: "Développeur",
+  "game-design": "Game Designer",
+  audio: "Sound Designer",
+  narrative: "Narrateur",
+  qa: "QA",
+  marketing: "Marketing",
+  production: "Producteur",
+};
+
+/** Returns the display title shown under an agent's name, replacing the legacy `role` field. */
+export function getAgentTitle(agent: {
+  department: string;
+  position?: string | null;
+  specialization?: string | null;
+}): string {
+  const positionLabel =
+    AGENT_POSITIONS.find((p) => p.id === agent.position)?.label ?? null;
+
+  if (agent.department === "programming") {
+    const specLabel =
+      PROGRAMMER_SPECIALIZATIONS.find((s) => s.id === agent.specialization)?.label ?? null;
+    const parts = ["Développeur", specLabel, positionLabel].filter(Boolean);
+    return parts.join(" ");
+  }
+
+  const deptLabel = DEPARTMENT_LABELS[agent.department] ?? agent.department;
+  const parts = [deptLabel, positionLabel].filter(Boolean);
+  return parts.join(" ");
+}
+
 export type Gender = "homme" | "femme";
 
 export type PersonalityTrait =
