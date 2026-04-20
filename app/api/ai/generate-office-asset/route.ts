@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { PNG } from "pngjs";
+import { generatePixelArtLocally } from "@/lib/services/comfyui";
 
 export const maxDuration = 120;
 
@@ -111,140 +111,10 @@ function storagePath(asset: OfficeAssetType, variant: AssetVariant): string {
   return `editor-assets/${asset}-v${variant}-${STORAGE_VERSION}.png`;
 }
 
-// ─── Generate image via OpenRouter ───────────────────────────────────────────
-async function generateImage(prompt: string): Promise<ArrayBuffer> {
-  const apiKey =
-    process.env.OPENROUTER_API_KEY ?? process.env.OPEN_ROUTE_SERVICE_API_KEY;
-  if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY");
-
-  const content = [{ type: "text", text: prompt }];
-
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash-image",
-      messages: [{ role: "user", content }],
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    console.error("[generate-office-asset] OpenRouter error:", res.status, err.slice(0, 200));
-    throw new Error(`OpenRouter ${res.status}: ${err.slice(0, 200)}`);
-  }
-
-  const json = await res.json();
-  const message = json?.choices?.[0]?.message;
-
-  const images: Array<{ type: string; image_url?: { url: string } }> =
-    message?.images ?? [];
-  const msgContent = message?.content;
-
-  let imageUrl: string | undefined;
-  let base64Data: string | undefined;
-
-  for (const block of images) {
-    const url: string = block?.image_url?.url ?? "";
-    if (url.startsWith("data:image")) {
-      base64Data = url.split(",")[1];
-    } else if (url) {
-      imageUrl = url;
-    }
-    if (base64Data || imageUrl) break;
-  }
-
-  if (!base64Data && !imageUrl) {
-    if (typeof msgContent === "string") {
-      if (msgContent.startsWith("data:image")) {
-        base64Data = msgContent.split(",")[1];
-      } else if (msgContent.startsWith("http")) {
-        imageUrl = msgContent.trim();
-      }
-    } else if (Array.isArray(msgContent)) {
-      for (const block of msgContent) {
-        if (block?.type === "image_url") {
-          const url: string = block.image_url?.url ?? "";
-          if (url.startsWith("data:image")) {
-            base64Data = url.split(",")[1];
-          } else {
-            imageUrl = url;
-          }
-          if (base64Data || imageUrl) break;
-        }
-      }
-    }
-  }
-
-  if (base64Data) {
-    const binary = Buffer.from(base64Data, "base64");
-    return binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength);
-  }
-
-  if (imageUrl) {
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error(`Failed to fetch generated image: ${imgRes.status}`);
-    return imgRes.arrayBuffer();
-  }
-
-  console.error(
-    "[generate-office-asset] Unexpected response:",
-    JSON.stringify(json).slice(0, 300)
-  );
-  throw new Error("No image data found in OpenRouter response");
-}
-
-// ─── Background removal ───────────────────────────────────────────────────────
-function removeBackground(imageBuffer: Buffer): Buffer {
-  const png = PNG.sync.read(imageBuffer);
-  const { width, height, data } = png;
-
-  const THRESHOLD = 185;
-  const idx = (x: number, y: number) => (y * width + x) * 4;
-
-  const isBackground = (x: number, y: number): boolean => {
-    const i = idx(x, y);
-    const a = data[i + 3];
-    if (a < 10) return true;
-    const r = data[i], g = data[i + 1], b = data[i + 2];
-    return r > THRESHOLD && g > THRESHOLD && b > THRESHOLD;
-  };
-
-  const visited = new Uint8Array(width * height);
-  const queue: number[] = [];
-
-  const enqueue = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const pos = y * width + x;
-    if (visited[pos]) return;
-    if (!isBackground(x, y)) return;
-    visited[pos] = 1;
-    queue.push(x, y);
-  };
-
-  for (let x = 0; x < width; x++) {
-    enqueue(x, 0);
-    enqueue(x, height - 1);
-  }
-  for (let y = 0; y < height; y++) {
-    enqueue(0, y);
-    enqueue(width - 1, y);
-  }
-
-  while (queue.length > 0) {
-    const y = queue.pop()!;
-    const x = queue.pop()!;
-    data[idx(x, y) + 3] = 0;
-    enqueue(x + 1, y);
-    enqueue(x - 1, y);
-    enqueue(x, y + 1);
-    enqueue(x, y - 1);
-  }
-
-  return PNG.sync.write(png, { colorType: 6, filterType: 4 });
+// ─── Generate image via ComfyUI (local) ──────────────────────────────────────
+async function generateImage(prompt: string): Promise<Buffer> {
+  const result = await generatePixelArtLocally({ prompt, width: 512, height: 512 });
+  return result.buffer;
 }
 
 // ─── GET — list available variants for an asset ───────────────────────────────
@@ -326,20 +196,10 @@ export async function POST(req: NextRequest) {
 
   let buffer: Buffer;
   try {
-    const ab = await generateImage(prompt);
-    buffer = Buffer.from(ab);
+    buffer = await generateImage(prompt);
   } catch (err) {
     console.error("[generate-office-asset] Generation failed:", (err as Error).message);
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });
-  }
-
-  // ── Background removal ────────────────────────────────────────────────────
-  try {
-    buffer = removeBackground(buffer);
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error("[generate-office-asset] Cutout failed:", message);
-    return NextResponse.json({ error: `Cutout failed: ${message}` }, { status: 502 });
   }
 
   // ── Upload ────────────────────────────────────────────────────────────────
