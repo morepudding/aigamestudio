@@ -4,11 +4,12 @@ import { useRef, useState, useEffect, useMemo } from "react";
 import { Stage, Layer, Image as KImage, Rect, Text } from "react-konva";
 import { useChatPanel } from "@/components/chat/ChatPanelProvider";
 import { LpcAutoWalker, type AgentZone } from "@/components/office/LpcWalker";
-import { ZoneManager } from "@/components/office/ZoneManager";
 import { ZoneDrawingTool } from "@/components/office/ZoneDrawingTool";
 import { ZoneOverlay } from "@/components/office/ZoneOverlay";
 import { ZoneService } from "@/lib/services/zoneService";
 import type { OfficeZone, ZoneBoundsData } from "@/lib/types/office";
+import { getAllAvailableLpcHairStyles } from "@/lib/config/lpcMapping";
+import { appearanceOptions, hairColors } from "@/lib/wizard-data";
 import {
   Check,
   Copy,
@@ -31,11 +32,9 @@ import {
   Menu,
   ChevronDown,
   ChevronUp,
-  Map,
   Eye,
   EyeOff,
-  Square,
-  Hexagon,
+  Map,
 } from "lucide-react";
 import { useOfficeNav } from "@/components/sidebar";
 import {
@@ -111,7 +110,10 @@ type Agent = {
   name: string;
   role: string;
   department: string;
+  gender: string;
   lpc_sprite_url?: string | null;
+  lpc_hair_style?: string | null;
+  lpc_hair_color?: string | null;
 };
 
 type StudioConfigResponse = {
@@ -224,11 +226,21 @@ function SelectedAgentPanel({
   agent,
   size,
   onSize,
+  hairOptions,
+  hairColorOptions,
+  hairSaving,
+  onHairStyleChange,
+  onHairColorChange,
   onClose,
 }: {
   agent: Agent;
   size: number;
   onSize: (mult: number) => void;
+  hairOptions: { value: string; label: string }[];
+  hairColorOptions: { value: string; label: string; color: string }[];
+  hairSaving: boolean;
+  onHairStyleChange: (hairStyle: string) => void;
+  onHairColorChange: (hairColor: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -273,6 +285,60 @@ function SelectedAgentPanel({
         {/* Department info */}
         <div className="flex items-center gap-1 border-l border-white/8 pl-3">
           <span className="text-[10px] text-white/40">{agent.department}</span>
+        </div>
+      </div>
+
+      <div className="px-3 py-3 border-t border-white/8 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] font-medium text-white/55 uppercase tracking-wider">Coupe du sprite</span>
+          {hairSaving && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-indigo-200/80">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Mise à jour...
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {hairOptions.map((option) => {
+            const isActive = (agent.lpc_hair_style ?? "none") === option.value;
+            return (
+              <button
+                key={option.value}
+                onClick={() => onHairStyleChange(option.value)}
+                disabled={hairSaving || isActive}
+                className={`px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                  isActive
+                    ? "bg-indigo-500/20 border border-indigo-400/40 text-indigo-100"
+                    : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
+                } disabled:opacity-60 disabled:cursor-default`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="pt-1">
+          <span className="text-[11px] font-medium text-white/55 uppercase tracking-wider">Couleur</span>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {hairColorOptions.map((option) => {
+              const isActive = (agent.lpc_hair_color ?? "") === option.value;
+              return (
+                <button
+                  key={option.value}
+                  onClick={() => onHairColorChange(option.value)}
+                  disabled={hairSaving || isActive}
+                  title={option.label}
+                  className={`w-7 h-7 rounded-full border-2 transition-all ${
+                    isActive
+                      ? "border-indigo-300 scale-110 shadow-lg shadow-indigo-500/20"
+                      : "border-white/10 hover:scale-110"
+                  } disabled:opacity-60 disabled:cursor-default`}
+                  style={{ backgroundColor: option.color }}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -444,17 +510,17 @@ export function PixelArtOffice() {
   const [changingAngleFor, setChangingAngleFor] = useState<string | null>(null);
   const [selectedAgentSlug, setSelectedAgentSlug] = useState<string | null>(null);
   const [agentSizes, setAgentSizes] = useState<Record<string, number>>({});
+  const [savingAgentHairSlug, setSavingAgentHairSlug] = useState<string | null>(null);
 
   const [activeCategory, setActiveCategory] = useState<string>("mobilier");
 
   // Zone states
   const [zones, setZones] = useState<OfficeZone[]>([]);
-  const [zoneManagerOpen, setZoneManagerOpen] = useState(false);
   const [isDrawingZone, setIsDrawingZone] = useState(false);
-  const [zoneDrawingShape, setZoneDrawingShape] = useState<'rectangle' | 'polygon'>('rectangle');
   const [showZonesOverlay, setShowZonesOverlay] = useState(true);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
-  const [tempZoneBounds, setTempZoneBounds] = useState<ZoneBoundsData | null>(null);
+  const [pendingZoneBounds, setPendingZoneBounds] = useState<ZoneBoundsData | null>(null);
+  const [isSavingZone, setIsSavingZone] = useState(false);
 
   useEffect(() => { initializeStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -500,6 +566,31 @@ export function PixelArtOffice() {
   const stageH = containerSize.height;
   const selectedAsset = assets.find((a) => a.id === selectedAssetId) ?? null;
   const hasMissingSprites = agents.some((agent) => !agent.lpc_sprite_url);
+  const displayZones = useMemo<OfficeZone[]>(() => {
+    if (!pendingZoneBounds) {
+      return zones;
+    }
+
+    return [
+      ...zones,
+      {
+        id: "pending-zone",
+        name: "Nouvelle zone",
+        description: "Zone en attente de confirmation",
+        bounds: pendingZoneBounds,
+        color: "#3b82f6",
+        opacity: 0.24,
+        zone_type: "common",
+        department: null,
+        agent_slug: null,
+        is_active: true,
+        is_exclusive: true,
+        allow_crossing: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+  }, [pendingZoneBounds, zones]);
 
   const PLACEABLE_ASSET_TYPES: PlaceableOfficeAssetType[] = [
     "desk_workstation", "chair_office", "plant_green_1", "plant_green_2",
@@ -577,31 +668,53 @@ export function PixelArtOffice() {
   };
 
   // ── Zone management functions ──────────────────────────────────────────────
-  const handleZoneCreated = async (zone: OfficeZone) => {
-    setZones(prev => [...prev, zone]);
-    setTempZoneBounds(null);
-  };
-
-  const handleZoneUpdated = async (zone: OfficeZone) => {
-    setZones(prev => prev.map(z => z.id === zone.id ? zone : z));
-  };
-
-  const handleZoneDeleted = async (zoneId: string) => {
-    setZones(prev => prev.filter(z => z.id !== zoneId));
-    if (selectedZoneId === zoneId) {
-      setSelectedZoneId(null);
+  const confirmPendingZone = async () => {
+    if (!pendingZoneBounds) {
+      return;
     }
+
+    setIsSavingZone(true);
+    setErrorMessage(null);
+
+    const savedZone = await ZoneService.createZone({
+      name: "Zone de circulation",
+      description: "Zone libre de déplacement",
+      bounds: pendingZoneBounds,
+      zone_type: "common",
+      color: "#3b82f6",
+      opacity: 0.18,
+      is_exclusive: true,
+      allow_crossing: true,
+    });
+
+    if (!savedZone) {
+      setIsSavingZone(false);
+      setErrorMessage("Impossible d'enregistrer la zone.");
+      setTimeout(() => setErrorMessage(null), 2500);
+      return;
+    }
+
+    setZones([savedZone]);
+    setSelectedZoneId(savedZone.id);
+    setPendingZoneBounds(null);
+    setIsSavingZone(false);
+    setSaveMessage("Zone mise à jour");
+    setTimeout(() => setSaveMessage(null), 2000);
   };
 
-  const handleZoneDrawingComplete = async (bounds: ZoneBoundsData) => {
-    setTempZoneBounds(bounds);
+  const handleZoneDrawingComplete = (bounds: ZoneBoundsData) => {
     setIsDrawingZone(false);
-    setZoneManagerOpen(true);
+    setPendingZoneBounds(bounds);
+    setSelectedZoneId("pending-zone");
+    setShowZonesOverlay(true);
+    setSaveMessage(null);
+    setErrorMessage(null);
   };
 
   const handleZoneDrawingCancel = () => {
     setIsDrawingZone(false);
-    setTempZoneBounds(null);
+    setPendingZoneBounds(null);
+    setSelectedZoneId(null);
   };
 
   const handleZoneClick = (zone: OfficeZone) => {
@@ -612,11 +725,25 @@ export function PixelArtOffice() {
     setShowZonesOverlay(prev => !prev);
   };
 
-  const startDrawingZone = (shape: 'rectangle' | 'polygon') => {
+  const startDrawingZone = () => {
+    setPendingZoneBounds(null);
     setIsDrawingZone(true);
-    setZoneDrawingShape(shape);
     setSelectedAssetId(null);
     setSelectedAgentSlug(null);
+    setSelectedZoneId(null);
+    setErrorMessage(null);
+  };
+
+  const redrawPendingZone = () => {
+    setPendingZoneBounds(null);
+    setSelectedZoneId(null);
+    setIsDrawingZone(true);
+    setErrorMessage(null);
+  };
+
+  const discardPendingZone = () => {
+    setPendingZoneBounds(null);
+    setSelectedZoneId(null);
   };
 
   // Convert OfficeZone to AgentZone for LpcAutoWalker
@@ -627,22 +754,8 @@ export function PixelArtOffice() {
       );
 
       return agentSpecificZones.map(zone => {
-        // Convert ZoneBoundsData to ZoneBounds (rectangle approximation for polygons)
-        let bounds: ZoneBounds;
-        if (zone.bounds.type === 'rectangle') {
-          bounds = zone.bounds.bounds;
-        } else {
-          // For polygons, use bounding box
-          const points = zone.bounds.points;
-          const xs = points.map(p => p[0]);
-          const ys = points.map(p => p[1]);
-          bounds = {
-            x1: Math.min(...xs),
-            y1: Math.min(...ys),
-            x2: Math.max(...xs),
-            y2: Math.max(...ys),
-          };
-        }
+        // ZoneBoundsData est maintenant directement ZoneBounds
+        const bounds = zone.bounds;
 
         return {
           id: zone.id,
@@ -851,6 +964,56 @@ export function PixelArtOffice() {
     });
   };
 
+  const updateSelectedAgentHair = async (agent: Agent, updates: Partial<Pick<Agent, "lpc_hair_style" | "lpc_hair_color">>) => {
+    if (savingAgentHairSlug === agent.slug) return;
+
+    setSavingAgentHairSlug(agent.slug);
+    setErrorMessage(null);
+
+    try {
+      const patchRes = await fetch(`/api/agents/${agent.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      if (!patchRes.ok) {
+        throw new Error("Échec de la mise à jour de la coupe.");
+      }
+
+      setAgents((current) => current.map((entry) => (
+        entry.slug === agent.slug
+          ? { ...entry, ...updates }
+          : entry
+      )));
+
+      const spriteRes = await fetch(`/api/agents/${agent.slug}/generate-sprite`, { method: "POST" });
+      const spriteData = await spriteRes.json();
+
+      if (!spriteRes.ok || !spriteData.sprite_url) {
+        throw new Error("Sprite non régénéré.");
+      }
+
+      setAgents((current) => current.map((entry) => (
+        entry.slug === agent.slug
+          ? {
+              ...entry,
+              ...updates,
+              lpc_sprite_url: `${spriteData.sprite_url}?t=${Date.now()}`,
+            }
+          : entry
+      )));
+
+      setSaveMessage("Coupe mise à jour");
+      setTimeout(() => setSaveMessage(null), 2000);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Impossible de modifier la coupe.");
+      setTimeout(() => setErrorMessage(null), 2500);
+    } finally {
+      setSavingAgentHairSlug(null);
+    }
+  };
+
   // ── Duplicate / delete ─────────────────────────────────────────────────────
   const duplicateSelected = () => {
     if (!selectedAsset) return;
@@ -942,11 +1105,11 @@ export function PixelArtOffice() {
             })()}
             
             {/* Zone overlay */}
-            {showZonesOverlay && zones.length > 0 && (
+            {showZonesOverlay && displayZones.length > 0 && (
               <ZoneOverlay
                 width={stageW / canvasScale}
                 height={stageH / canvasScale}
-                zones={zones}
+                zones={displayZones}
                 showLabels={true}
                 showOnlyActive={true}
                 selectedZoneId={selectedZoneId}
@@ -960,7 +1123,6 @@ export function PixelArtOffice() {
                 width={stageW / canvasScale}
                 height={stageH / canvasScale}
                 isDrawing={isDrawingZone}
-                shapeType={zoneDrawingShape}
                 onDrawingComplete={handleZoneDrawingComplete}
                 onDrawingCancel={handleZoneDrawingCancel}
                 existingZones={zones.map(z => z.bounds)}
@@ -1005,38 +1167,28 @@ export function PixelArtOffice() {
             const pos = DESK_POSITIONS[index % DESK_POSITIONS.length];
             const agentSize = agentSizes[agent.slug] || 1.0;
             const isSelected = selectedAgentSlug === agent.slug;
+            const agentZones = getAgentZones(agent.slug, agent.department);
 
             return (
-              <div
+              <LpcAutoWalker
                 key={agent.slug}
-                className={`absolute cursor-pointer ${isSelected ? 'z-50' : ''}`}
-                style={{
-                  left: `${pos.x}%`,
-                  top: `${pos.y}%`,
-                  transform: `translate(-50%, -50%) scale(${agentSize})`,
-                  transformOrigin: 'center',
-                  transition: 'transform 0.2s ease',
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
+                spriteUrl={agent.lpc_sprite_url!}
+                agentName={agent.name}
+                agentDepartment={agent.department}
+                onClick={() => {
                   setSelectedAgentSlug(agent.slug);
                   setSelectedAssetId(null);
+                  openChat(agent.slug);
                 }}
-              >
-                <LpcAutoWalker
-                  spriteUrl={agent.lpc_sprite_url!}
-                  agentName={agent.name}
-                  onClick={() => openChat(agent.slug)}
-                  containerW={containerSize.width}
-                  containerH={containerSize.height}
-                  initialX={0.5}
-                  initialY={0.5}
-                  className="pointer-events-auto"
-                />
-                {isSelected && (
-                  <div className="absolute -inset-2 border-2 border-indigo-400 rounded-lg pointer-events-none animate-pulse"></div>
-                )}
-              </div>
+                containerW={containerSize.width}
+                containerH={containerSize.height}
+                initialX={pos.x / 100}
+                initialY={pos.y / 100}
+                zones={agentZones}
+                scale={agentSize}
+                selected={isSelected}
+                className="pointer-events-auto"
+              />
             );
           })}
       </div>
@@ -1084,42 +1236,54 @@ export function PixelArtOffice() {
           </button>
           
           <button
-            onClick={() => startDrawingZone('rectangle')}
-            disabled={isDrawingZone}
+            onClick={startDrawingZone}
+            disabled={isDrawingZone || isSavingZone}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
-              isDrawingZone && zoneDrawingShape === 'rectangle'
+              isDrawingZone
                 ? 'bg-amber-600/70 border-amber-400/30 text-white'
                 : 'bg-black/50 border-white/10 text-white/60 hover:text-white hover:bg-black/70'
             }`}
-            title="Dessiner une zone rectangulaire"
-          >
-            <Square className="w-3 h-3" />
-            Rectangle
-          </button>
-          
-          <button
-            onClick={() => startDrawingZone('polygon')}
-            disabled={isDrawingZone}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
-              isDrawingZone && zoneDrawingShape === 'polygon'
-                ? 'bg-amber-600/70 border-amber-400/30 text-white'
-                : 'bg-black/50 border-white/10 text-white/60 hover:text-white hover:bg-black/70'
-            }`}
-            title="Dessiner une zone polygonale"
-          >
-            <Hexagon className="w-3 h-3" />
-            Polygone
-          </button>
-          
-          <button
-            onClick={() => setZoneManagerOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[11px] text-white/60 hover:text-white hover:bg-black/70 transition-all"
-            title="Gérer les zones"
+            title="Dessiner la zone de marche"
           >
             <Map className="w-3 h-3" />
-            Gérer
+            Zone
           </button>
         </div>
+
+        {pendingZoneBounds && !isDrawingZone && (
+          <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-500/12 backdrop-blur border border-amber-400/30">
+            <span className="text-[11px] text-amber-100/90 pr-1">
+              Zone tracée. Confirmez pour l&apos;enregistrer.
+            </span>
+            <button
+              onClick={() => void confirmPendingZone()}
+              disabled={isSavingZone}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600/80 border border-emerald-400/30 text-[11px] text-white hover:bg-emerald-500/80 transition-all disabled:opacity-50"
+              title="Confirmer la zone"
+            >
+              {isSavingZone ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              Confirmer
+            </button>
+            <button
+              onClick={redrawPendingZone}
+              disabled={isSavingZone}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-black/40 border border-white/10 text-[11px] text-white/75 hover:text-white hover:bg-black/60 transition-all disabled:opacity-50"
+              title="Redessiner"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Redessiner
+            </button>
+            <button
+              onClick={discardPendingZone}
+              disabled={isSavingZone}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-red-500/12 border border-red-400/20 text-[11px] text-red-200 hover:bg-red-500/20 transition-all disabled:opacity-50"
+              title="Annuler la zone"
+            >
+              <X className="w-3 h-3" />
+              Annuler
+            </button>
+          </div>
+        )}
         
         {saveMessage && (
           <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-white/10">
@@ -1270,11 +1434,23 @@ export function PixelArtOffice() {
           {(() => {
             const agent = agents.find(a => a.slug === selectedAgentSlug);
             if (!agent) return null;
+            const hairOptions = getAllAvailableLpcHairStyles(agent.gender);
+            const colorSource = agent.gender === "femme" ? appearanceOptions.femme.cheveux : appearanceOptions.homme.cheveux;
+            const hairColorOptions = colorSource.map((option) => ({
+              value: option.value,
+              label: option.label,
+              color: hairColors[option.value] || "#666",
+            }));
             return (
               <SelectedAgentPanel
                 agent={agent}
                 size={agentSizes[agent.slug] || 1.0}
                 onSize={resizeSelectedAgent}
+                hairOptions={hairOptions}
+                hairColorOptions={hairColorOptions}
+                hairSaving={savingAgentHairSlug === agent.slug}
+                onHairStyleChange={(hairStyle) => void updateSelectedAgentHair(agent, { lpc_hair_style: hairStyle })}
+                onHairColorChange={(hairColor) => void updateSelectedAgentHair(agent, { lpc_hair_color: hairColor })}
                 onClose={() => setSelectedAgentSlug(null)}
               />
             );

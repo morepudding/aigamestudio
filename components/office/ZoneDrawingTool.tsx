@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Rect, Line, Circle, Group } from "react-konva";
-import type { ZoneBoundsData, RectangleBounds, PolygonBounds, NormalizedPoint } from "@/lib/types/office";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Circle, Group, Line, Rect, Text } from "react-konva";
+import type { NormalizedPoint, ZoneBoundsData } from "@/lib/types/office";
+import { isPolygonBounds, isRectangleBounds, toZoneBounds } from "@/lib/types/office";
 import { ZoneService } from "@/lib/services/zoneService";
 
 interface ZoneDrawingToolProps {
   width: number;
   height: number;
   isDrawing: boolean;
-  shapeType: 'rectangle' | 'polygon';
   onDrawingComplete: (bounds: ZoneBoundsData) => void;
   onDrawingCancel: () => void;
   existingZones?: ZoneBoundsData[];
@@ -19,376 +19,256 @@ export function ZoneDrawingTool({
   width,
   height,
   isDrawing,
-  shapeType,
   onDrawingComplete,
   onDrawingCancel,
   existingZones = [],
 }: ZoneDrawingToolProps) {
-  const [drawingPoints, setDrawingPoints] = useState<NormalizedPoint[]>([]);
-  const [currentPoint, setCurrentPoint] = useState<NormalizedPoint | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startPoint, setStartPoint] = useState<NormalizedPoint | null>(null);
+  const [points, setPoints] = useState<NormalizedPoint[]>([]);
+  const [hoverPoint, setHoverPoint] = useState<NormalizedPoint | null>(null);
 
-  // Reset drawing state when tool changes
   useEffect(() => {
-    setDrawingPoints([]);
-    setCurrentPoint(null);
-    setStartPoint(null);
-    setIsDragging(false);
-  }, [shapeType, isDrawing]);
-
-  // Handle mouse move for preview
-  const handleMouseMove = useCallback((e: any) => {
-    if (!isDrawing) return;
-
-    const stage = e.target.getStage();
-    const pointerPos = stage.getPointerPosition();
-    
-    if (!pointerPos) return;
-
-    const normalizedPoint = ZoneService.normalizeCoordinates(
-      pointerPos.x,
-      pointerPos.y,
-      width,
-      height
-    );
-
-    setCurrentPoint(normalizedPoint);
-
-    if (shapeType === 'rectangle' && startPoint && isDragging) {
-      // For rectangle dragging
-      setDrawingPoints([startPoint, normalizedPoint]);
+    if (!isDrawing) {
+      setPoints([]);
+      setHoverPoint(null);
     }
-  }, [isDrawing, shapeType, startPoint, isDragging, width, height]);
+  }, [isDrawing]);
 
-  // Handle mouse down
-  const handleMouseDown = useCallback((e: any) => {
-    if (!isDrawing) return;
-
-    const stage = e.target.getStage();
-    const pointerPos = stage.getPointerPosition();
-    
-    if (!pointerPos) return;
-
-    const normalizedPoint = ZoneService.normalizeCoordinates(
-      pointerPos.x,
-      pointerPos.y,
-      width,
-      height
-    );
-
-    if (shapeType === 'rectangle') {
-      // Start rectangle drag
-      setStartPoint(normalizedPoint);
-      setDrawingPoints([normalizedPoint]);
-      setIsDragging(true);
-    } else if (shapeType === 'polygon') {
-      // Add point to polygon
-      const newPoints = [...drawingPoints, normalizedPoint];
-      setDrawingPoints(newPoints);
-      
-      // Check if polygon is complete (click near first point)
-      if (newPoints.length >= 3) {
-        const firstPoint = newPoints[0];
-        const distance = Math.sqrt(
-          Math.pow(normalizedPoint.x - firstPoint.x, 2) + 
-          Math.pow(normalizedPoint.y - firstPoint.y, 2)
-        );
-        
-        if (distance < 0.05) { // 5% threshold for closing
-          completePolygon(newPoints.slice(0, -1)); // Remove the closing click
-        }
-      }
-    }
-  }, [isDrawing, shapeType, drawingPoints, width, height]);
-
-  // Handle mouse up for rectangle
-  const handleMouseUp = useCallback(() => {
-    if (!isDrawing || shapeType !== 'rectangle' || !isDragging) return;
-
-    if (drawingPoints.length === 2) {
-      completeRectangle(drawingPoints[0], drawingPoints[1]);
-    }
-    
-    setIsDragging(false);
-    setStartPoint(null);
-  }, [isDrawing, shapeType, isDragging, drawingPoints]);
-
-  // Complete rectangle drawing
-  const completeRectangle = (p1: NormalizedPoint, p2: NormalizedPoint) => {
-    const x1 = Math.min(p1.x, p2.x);
-    const y1 = Math.min(p1.y, p2.y);
-    const x2 = Math.max(p1.x, p2.x);
-    const y2 = Math.max(p1.y, p2.y);
-
-    // Check minimum size
-    const minSize = 0.05; // 5% minimum
-    if (x2 - x1 < minSize || y2 - y1 < minSize) {
-      alert(`La zone doit faire au moins ${minSize * 100}% de la taille du canvas`);
-      onDrawingCancel();
-      return;
-    }
-
-    const bounds: ZoneBoundsData = {
-      type: 'rectangle',
-      bounds: { x1, y1, x2, y2 },
-    };
-
-    onDrawingComplete(bounds);
-  };
-
-  // Complete polygon drawing
-  const completePolygon = (points: NormalizedPoint[]) => {
+  const completePolygon = useCallback(() => {
     if (points.length < 3) {
-      alert("Un polygone doit avoir au moins 3 points");
-      onDrawingCancel();
       return;
     }
 
-    // Convert to polygon format
-    const polygonPoints: PolygonBounds = points.map(p => [p.x, p.y]);
+    onDrawingComplete({
+      type: "polygon",
+      points: points.map(({ x, y }) => [x, y]),
+    });
+  }, [onDrawingComplete, points]);
 
-    const bounds: ZoneBoundsData = {
-      type: 'polygon',
-      points: polygonPoints,
-    };
-
-    onDrawingComplete(bounds);
-  };
-
-  // Cancel drawing with Escape key
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isDrawing) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!isDrawing) {
+        return;
+      }
+
+      if (event.key === "Escape") {
         onDrawingCancel();
       }
+
+      if (event.key === "Enter") {
+        completePolygon();
+      }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing, onDrawingCancel]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [completePolygon, isDrawing, onDrawingCancel]);
 
-  // Render drawing preview
-  const renderDrawingPreview = () => {
-    if (!isDrawing || (!currentPoint && drawingPoints.length === 0)) {
-      return null;
-    }
+  const toScreen = useCallback(
+    (point: NormalizedPoint) => ZoneService.denormalizeCoordinates(point.x, point.y, width, height),
+    [height, width]
+  );
 
-    const denormalize = (point: NormalizedPoint) => {
-      return ZoneService.denormalizeCoordinates(point.x, point.y, width, height);
-    };
+  const currentPolyline = useMemo(() => {
+    const previewPoints = hoverPoint ? [...points, hoverPoint] : points;
+    return previewPoints.flatMap((point) => {
+      const screenPoint = toScreen(point);
+      return [screenPoint.x, screenPoint.y];
+    });
+  }, [hoverPoint, points, toScreen]);
 
-    if (shapeType === 'rectangle') {
-      if (drawingPoints.length === 1 && currentPoint) {
-        const p1 = drawingPoints[0];
-        const p2 = currentPoint;
-        const x1 = Math.min(p1.x, p2.x);
-        const y1 = Math.min(p1.y, p2.y);
-        const x2 = Math.max(p1.x, p2.x);
-        const y2 = Math.max(p1.y, p2.y);
-
-        const { x: screenX1, y: screenY1 } = denormalize({ x: x1, y: y1 });
-        const { x: screenX2, y: screenY2 } = denormalize({ x: x2, y: y2 });
-
-        return (
-          <Group>
-            <Rect
-              x={screenX1}
-              y={screenY1}
-              width={screenX2 - screenX1}
-              height={screenY2 - screenY1}
-              stroke="#3b82f6"
-              strokeWidth={2}
-              dash={[5, 5]}
-              fill="rgba(59, 130, 246, 0.1)"
-            />
-            <Circle
-              x={screenX1}
-              y={screenY1}
-              radius={4}
-              fill="#3b82f6"
-            />
-            <Circle
-              x={screenX2}
-              y={screenY2}
-              radius={4}
-              fill="#3b82f6"
-            />
-          </Group>
-        );
-      }
-    } else if (shapeType === 'polygon') {
-      const points: number[] = [];
-      
-      // Add existing points
-      drawingPoints.forEach(point => {
-        const { x, y } = denormalize(point);
-        points.push(x, y);
-      });
-
-      // Add current point for preview
-      if (currentPoint && drawingPoints.length > 0) {
-        const { x: currentX, y: currentY } = denormalize(currentPoint);
-        const lastPoint = drawingPoints[drawingPoints.length - 1];
-        const { x: lastX, y: lastY } = denormalize(lastPoint);
-        
-        points.push(lastX, lastY, currentX, currentY);
+  const handleMouseMove = useCallback(
+    (event: any) => {
+      if (!isDrawing) {
+        return;
       }
 
-      // Add line back to first point if we have at least 2 points
-      if (drawingPoints.length >= 2 && currentPoint) {
-        const firstPoint = drawingPoints[0];
-        const { x: firstX, y: firstY } = denormalize(firstPoint);
-        const { x: currentX, y: currentY } = denormalize(currentPoint);
-        
-        points.push(currentX, currentY, firstX, firstY);
+      const stage = event.target.getStage();
+      const pointerPos = stage?.getPointerPosition();
+      if (!pointerPos) {
+        return;
       }
 
-      return (
-        <Group>
-          {/* Polygon fill */}
-          {drawingPoints.length >= 3 && (
-            <Line
-              points={drawingPoints.flatMap(p => {
-                const { x, y } = denormalize(p);
-                return [x, y];
-              })}
-              closed
-              fill="rgba(59, 130, 246, 0.1)"
-              stroke="rgba(59, 130, 246, 0.3)"
-              strokeWidth={1}
-            />
-          )}
+      setHoverPoint(ZoneService.normalizeCoordinates(pointerPos.x, pointerPos.y, width, height));
+    },
+    [height, isDrawing, width]
+  );
 
-          {/* Lines between points */}
-          <Line
-            points={points}
-            stroke="#3b82f6"
-            strokeWidth={2}
-            dash={[5, 5]}
-          />
+  const handleMouseDown = useCallback(
+    (event: any) => {
+      if (!isDrawing) {
+        return;
+      }
 
-          {/* Points */}
-          {drawingPoints.map((point, index) => {
-            const { x, y } = denormalize(point);
-            return (
-              <Circle
-                key={index}
-                x={x}
-                y={y}
-                radius={4}
-                fill="#3b82f6"
-                stroke="#ffffff"
-                strokeWidth={1}
-              />
-            );
-          })}
+      const stage = event.target.getStage();
+      const pointerPos = stage?.getPointerPosition();
+      if (!pointerPos) {
+        return;
+      }
 
-          {/* Current point */}
-          {currentPoint && (
-            <Circle
-              x={denormalize(currentPoint).x}
-              y={denormalize(currentPoint).y}
-              radius={3}
-              fill="#ef4444"
-            />
-          )}
-        </Group>
-      );
-    }
+      const normalizedPoint = ZoneService.normalizeCoordinates(pointerPos.x, pointerPos.y, width, height);
+      setPoints((currentPoints) => [...currentPoints, normalizedPoint]);
+    },
+    [height, isDrawing, width]
+  );
 
-    return null;
-  };
-
-  // Render existing zones for reference
   const renderExistingZones = () => {
     return existingZones.map((zone, index) => {
-      if (zone.type === 'rectangle') {
+      if (isRectangleBounds(zone)) {
         const { x1, y1, x2, y2 } = zone.bounds;
-        const { x: screenX1, y: screenY1 } = ZoneService.denormalizeCoordinates(x1, y1, width, height);
-        const { x: screenX2, y: screenY2 } = ZoneService.denormalizeCoordinates(x2, y2, width, height);
+        const p1 = ZoneService.denormalizeCoordinates(x1, y1, width, height);
+        const p2 = ZoneService.denormalizeCoordinates(x2, y2, width, height);
 
         return (
           <Rect
-            key={`existing-${index}`}
-            x={screenX1}
-            y={screenY1}
-            width={screenX2 - screenX1}
-            height={screenY2 - screenY1}
-            stroke="rgba(255, 255, 255, 0.2)"
+            key={`existing-zone-${index}`}
+            x={p1.x}
+            y={p1.y}
+            width={p2.x - p1.x}
+            height={p2.y - p1.y}
+            stroke="rgba(255,255,255,0.25)"
             strokeWidth={1}
-            dash={[3, 3]}
-            fill="rgba(255, 255, 255, 0.05)"
+            dash={[6, 4]}
+            fill="rgba(255,255,255,0.05)"
           />
         );
       }
-      return null;
+
+      if (isPolygonBounds(zone)) {
+        const polygonPoints = zone.points.flatMap(([x, y]) => {
+          const point = ZoneService.denormalizeCoordinates(x, y, width, height);
+          return [point.x, point.y];
+        });
+
+        return (
+          <Line
+            key={`existing-zone-${index}`}
+            points={polygonPoints}
+            closed
+            stroke="rgba(255,255,255,0.25)"
+            strokeWidth={1}
+            dash={[6, 4]}
+            fill="rgba(255,255,255,0.05)"
+          />
+        );
+      }
+
+      const fallbackBounds = toZoneBounds(zone);
+      const p1 = ZoneService.denormalizeCoordinates(fallbackBounds.x1, fallbackBounds.y1, width, height);
+      const p2 = ZoneService.denormalizeCoordinates(fallbackBounds.x2, fallbackBounds.y2, width, height);
+
+      return (
+        <Rect
+          key={`existing-zone-${index}`}
+          x={p1.x}
+          y={p1.y}
+          width={p2.x - p1.x}
+          height={p2.y - p1.y}
+          stroke="rgba(255,255,255,0.25)"
+          strokeWidth={1}
+          dash={[6, 4]}
+          fill="rgba(255,255,255,0.05)"
+        />
+      );
     });
   };
 
-  // Instructions overlay
-  const renderInstructions = () => {
-    if (!isDrawing) return null;
-
-    const instructions = shapeType === 'rectangle'
-      ? "Cliquez et glissez pour dessiner un rectangle. Échap pour annuler."
-      : "Cliquez pour ajouter des points. Cliquez près du premier point pour fermer. Échap pour annuler.";
+  const renderPreview = () => {
+    if (!isDrawing || points.length === 0) {
+      return null;
+    }
 
     return (
       <Group>
-        <Rect
-          x={10}
-          y={10}
-          width={width - 20}
-          height={40}
-          fill="rgba(0, 0, 0, 0.7)"
-          cornerRadius={8}
+        {points.length >= 2 && (
+          <Line
+            points={currentPolyline}
+            stroke="#3b82f6"
+            strokeWidth={2}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+        {points.length >= 3 && (
+          <Line
+            points={currentPolyline}
+            closed={false}
+            stroke="rgba(59,130,246,0.35)"
+            strokeWidth={10}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+        {points.map((point, index) => {
+          const screenPoint = toScreen(point);
+          return (
+            <Circle
+              key={`point-${index}`}
+              x={screenPoint.x}
+              y={screenPoint.y}
+              radius={5}
+              fill="#3b82f6"
+              stroke="#ffffff"
+              strokeWidth={1}
+            />
+          );
+        })}
+        {hoverPoint && points.length > 0 && (() => {
+          const screenPoint = toScreen(hoverPoint);
+          return <Circle x={screenPoint.x} y={screenPoint.y} radius={4} fill="rgba(59,130,246,0.45)" />;
+        })()}
+      </Group>
+    );
+  };
+
+  const renderInstructions = () => {
+    if (!isDrawing) {
+      return null;
+    }
+
+    const panelWidth = Math.min(width - 20, 420);
+
+    return (
+      <Group>
+        <Rect x={10} y={10} width={panelWidth} height={96} fill="rgba(0,0,0,0.72)" cornerRadius={10} />
+        <Rect x={10} y={10} width={panelWidth} height={96} stroke="#3b82f6" strokeWidth={1} cornerRadius={10} />
+        <Line points={[20, 37, panelWidth, 37]} stroke="rgba(59,130,246,0.5)" strokeWidth={1} dash={[4, 4]} />
+        <Text
+          x={20}
+          y={18}
+          text="Mode dessin actif"
+          fontSize={13}
+          fontStyle="bold"
+          fill="#dbeafe"
+          listening={false}
         />
-        <Rect
-          x={10}
-          y={10}
-          width={width - 20}
-          height={40}
-          stroke="#3b82f6"
-          strokeWidth={1}
-          cornerRadius={8}
+        <Text
+          x={20}
+          y={45}
+          width={panelWidth - 20}
+          text="Cliquez pour poser les points. Double-cliquez ou appuyez sur Entrée pour terminer."
+          fontSize={12}
+          fill="rgba(255,255,255,0.85)"
+          listening={false}
         />
-        <Line
-          points={[15, 30, width - 15, 30]}
-          stroke="#3b82f6"
-          strokeWidth={1}
-          dash={[3, 3]}
+        <Text
+          x={20}
+          y={68}
+          width={panelWidth - 20}
+          text="Échap annule. Une confirmation apparaîtra ensuite pour enregistrer la zone."
+          fontSize={11}
+          fill="rgba(191,219,254,0.9)"
+          listening={false}
         />
       </Group>
     );
   };
 
   return (
-    <Group
-      onMouseMove={handleMouseMove}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-    >
-      {/* Existing zones (reference) */}
+    <Group onMouseMove={handleMouseMove} onMouseDown={handleMouseDown} onDblClick={completePolygon}>
       {renderExistingZones()}
-
-      {/* Drawing preview */}
-      {renderDrawingPreview()}
-
-      {/* Instructions */}
+      {renderPreview()}
       {renderInstructions()}
-
-      {/* Full-screen hit area for drawing */}
-      {isDrawing && (
-        <Rect
-          x={0}
-          y={0}
-          width={width}
-          height={height}
-          fill="transparent"
-          listening={true}
-        />
-      )}
+      {isDrawing && <Rect x={0} y={0} width={width} height={height} fill="transparent" listening />}
     </Group>
   );
 }

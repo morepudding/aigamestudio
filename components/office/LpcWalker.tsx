@@ -14,6 +14,8 @@
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import type { ZoneBounds, ZoneBoundsData } from "@/lib/types/office";
+import { isPolygonBounds, isPointInPolygon, isRectangleBounds, toZoneBounds } from "@/lib/types/office";
 
 const FRAME_SIZE = 64;   // px — one LPC tile
 const FRAMES = 9;        // frames per row
@@ -102,17 +104,55 @@ export function LpcWalker({
 
 interface Waypoint { x: number; y: number }
 
-export interface ZoneBounds {
-  /** Fractional coordinates (0–1) relative to container */
-  x1: number; y1: number; x2: number; y2: number;
-}
-
 // Extended interface for multiple zones support
 export interface AgentZone {
   id: string;
-  bounds: ZoneBounds;
+  bounds: ZoneBoundsData;
   isExclusive: boolean;
   priority: number;
+}
+
+function randomPointInRectangle(bounds: ZoneBounds, containerW: number, containerH: number): Waypoint | null {
+  const margin = DISPLAY * 0.6;
+  const minX = bounds.x1 * containerW + margin;
+  const maxX = bounds.x2 * containerW - margin;
+  const minY = bounds.y1 * containerH + margin;
+  const maxY = bounds.y2 * containerH - margin;
+
+  if (maxX <= minX || maxY <= minY) {
+    return null;
+  }
+
+  return {
+    x: minX + Math.random() * (maxX - minX),
+    y: minY + Math.random() * (maxY - minY),
+  };
+}
+
+function randomPointInPolygon(bounds: ZoneBoundsData, containerW: number, containerH: number): Waypoint | null {
+  if (!isPolygonBounds(bounds)) {
+    return null;
+  }
+
+  const box = toZoneBounds(bounds);
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const candidate = randomPointInRectangle(box, containerW, containerH);
+    if (!candidate) {
+      return null;
+    }
+
+    const normalizedPoint = {
+      x: candidate.x / containerW,
+      y: candidate.y / containerH,
+    };
+
+    if (isPointInPolygon(normalizedPoint, bounds.points)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function randomWaypoint(
@@ -137,17 +177,18 @@ function randomWaypoint(
   
   // Try each zone in order of priority
   for (const zone of sortedZones) {
-    const { bounds } = zone;
-    const minX = bounds.x1 * containerW + margin;
-    const maxX = bounds.x2 * containerW - margin;
-    const minY = bounds.y1 * containerH + margin;
-    const maxY = bounds.y2 * containerH - margin;
-    
-    if (maxX > minX && maxY > minY) {
-      return {
-        x: minX + Math.random() * (maxX - minX),
-        y: minY + Math.random() * (maxY - minY),
-      };
+    if (isRectangleBounds(zone.bounds)) {
+      const rectanglePoint = randomPointInRectangle(zone.bounds.bounds, containerW, containerH);
+      if (rectanglePoint) {
+        return rectanglePoint;
+      }
+    }
+
+    if (isPolygonBounds(zone.bounds)) {
+      const polygonPoint = randomPointInPolygon(zone.bounds, containerW, containerH);
+      if (polygonPoint) {
+        return polygonPoint;
+      }
     }
   }
   
@@ -172,9 +213,11 @@ function isPointInZones(
   const normalizedY = y / containerH;
   
   for (const zone of zones) {
-    const { bounds, isExclusive } = zone;
-    if (normalizedX >= bounds.x1 && normalizedX <= bounds.x2 &&
-        normalizedY >= bounds.y1 && normalizedY <= bounds.y2) {
+    const isInside = isRectangleBounds(zone.bounds)
+      ? normalizedX >= zone.bounds.bounds.x1 && normalizedX <= zone.bounds.bounds.x2 && normalizedY >= zone.bounds.bounds.y1 && normalizedY <= zone.bounds.bounds.y2
+      : isPointInPolygon({ x: normalizedX, y: normalizedY }, zone.bounds.points);
+
+    if (isInside) {
       return true;
     }
   }
@@ -184,9 +227,11 @@ function isPointInZones(
   if (exclusiveZones.length > 0) {
     // If in exclusive zone, must stay in that zone
     for (const zone of exclusiveZones) {
-      const { bounds } = zone;
-      if (normalizedX >= bounds.x1 && normalizedX <= bounds.x2 &&
-          normalizedY >= bounds.y1 && normalizedY <= bounds.y2) {
+      const isInside = isRectangleBounds(zone.bounds)
+        ? normalizedX >= zone.bounds.bounds.x1 && normalizedX <= zone.bounds.bounds.x2 && normalizedY >= zone.bounds.bounds.y1 && normalizedY <= zone.bounds.bounds.y2
+        : isPointInPolygon({ x: normalizedX, y: normalizedY }, zone.bounds.points);
+
+      if (isInside) {
         return true;
       }
     }
@@ -219,6 +264,10 @@ export interface LpcAutoWalkerProps extends Omit<LpcWalkerProps, "walking" | "di
   zoneBounds?: ZoneBounds;
   /** Multiple zones with priorities */
   zones?: AgentZone[];
+  /** Visual scale multiplier */
+  scale?: number;
+  /** Show selected outline */
+  selected?: boolean;
 }
 
 export function LpcAutoWalker({
@@ -233,6 +282,8 @@ export function LpcAutoWalker({
   className = "",
   zoneBounds,
   zones = [],
+  scale = 1,
+  selected = false,
 }: LpcAutoWalkerProps) {
   const [pos, setPos] = useState<Waypoint>({
     x: initialX * containerW,
@@ -253,7 +304,7 @@ export function LpcAutoWalker({
     if (zoneBounds) {
       return [{
         id: 'legacy-zone',
-        bounds: zoneBounds,
+        bounds: { type: "rectangle", bounds: zoneBounds },
         isExclusive: true,
         priority: 1,
       }];
@@ -280,15 +331,15 @@ export function LpcAutoWalker({
     setPos((current) => {
       const isInside = isPointInZones(current.x, current.y, effectiveZones, containerW, containerH);
       if (!isInside) {
-        // Immediately pick a target inside the zones
         const wp = randomWaypoint(containerW, containerH, effectiveZones);
-        setTarget(wp);
-        setWalking(true);
+        setTarget(null);
+        setWalking(false);
+        return wp;
       }
       return current;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveZones]);
+  }, [containerH, containerW, effectiveZones]);
 
   // Kick off on mount
   useEffect(() => {
@@ -357,6 +408,8 @@ export function LpcAutoWalker({
         top: pos.y - DISPLAY / 2,
         zIndex: Math.round(pos.y), // isometric depth sort
         transition: "none",
+        transform: `scale(${scale})`,
+        transformOrigin: "center",
       }}
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
@@ -367,6 +420,9 @@ export function LpcAutoWalker({
         walking={walking}
         direction={direction}
       />
+      {selected && (
+        <div className="absolute -inset-2 border-2 border-indigo-400 rounded-lg pointer-events-none animate-pulse" />
+      )}
       {/* Name badge on hover */}
       {hovered && agentName && (
         <div
