@@ -90,3 +90,11 @@ export function normalizeMarkdownDeliverable(content: string): string {
 
   return looksLikeMarkdown(normalized) ? normalized : original
 }
+
+export function normalizeRepoPath(path: string | null | undefined): string {
+  return (path ?? "")
+    .trim()
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+}
