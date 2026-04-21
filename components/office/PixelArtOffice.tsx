@@ -1,7 +1,14 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { Stage, Layer, Image as KImage, Rect, Text } from "react-konva";
+import { useChatPanel } from "@/components/chat/ChatPanelProvider";
+import { LpcAutoWalker, type AgentZone } from "@/components/office/LpcWalker";
+import { ZoneManager } from "@/components/office/ZoneManager";
+import { ZoneDrawingTool } from "@/components/office/ZoneDrawingTool";
+import { ZoneOverlay } from "@/components/office/ZoneOverlay";
+import { ZoneService } from "@/lib/services/zoneService";
+import type { OfficeZone, ZoneBoundsData } from "@/lib/types/office";
 import {
   Check,
   Copy,
@@ -24,6 +31,11 @@ import {
   Menu,
   ChevronDown,
   ChevronUp,
+  Map,
+  Eye,
+  EyeOff,
+  Square,
+  Hexagon,
 } from "lucide-react";
 import { useOfficeNav } from "@/components/sidebar";
 import {
@@ -94,11 +106,30 @@ type StudioLayoutPayload = {
 
 type AssetVariantsMap = Partial<Record<OfficeAssetType, Partial<Record<AssetVariant, string>>>>;
 
+type Agent = {
+  slug: string;
+  name: string;
+  role: string;
+  department: string;
+  lpc_sprite_url?: string | null;
+};
+
 type StudioConfigResponse = {
   defaultAssets?: Partial<Record<string, string>>;
   variants?: AssetVariantsMap;
   layout?: StudioLayoutPayload | null;
 };
+
+const DESK_POSITIONS: { x: number; y: number }[] = [
+  { x: 14, y: 36 },
+  { x: 28, y: 26 },
+  { x: 48, y: 21 },
+  { x: 64, y: 30 },
+  { x: 76, y: 48 },
+  { x: 42, y: 54 },
+  { x: 20, y: 60 },
+  { x: 84, y: 16 },
+];
 
 // ─── Catalogue data ───────────────────────────────────────────────────────────
 
@@ -188,7 +219,65 @@ function CatalogItem({
     </button>
   );
 }
+// ── SelectedAgentPanel — shown below canvas when agent is selected ───────────
+function SelectedAgentPanel({
+  agent,
+  size,
+  onSize,
+  onClose,
+}: {
+  agent: Agent;
+  size: number;
+  onSize: (mult: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/40 backdrop-blur-sm overflow-hidden">
+      <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-white/70">{agent.name}</span>
+          <span className="text-[10px] text-white/30">{agent.role}</span>
+          <span className="text-[10px] text-white/30">Taille: {(size * 100).toFixed(0)}%</span>
+        </div>
+        <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
+      <div className="px-3 py-2 flex items-center gap-3">
+        {/* Size controls */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onSize(0.85)}
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Réduire"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onSize(1.15)}
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Agrandir"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onSize(1.0)}
+            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Taille normale"
+          >
+            <span className="text-[10px] font-bold">100%</span>
+          </button>
+        </div>
+
+        {/* Department info */}
+        <div className="flex items-center gap-1 border-l border-white/8 pl-3">
+          <span className="text-[10px] text-white/40">{agent.department}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── SelectedAssetPanel — shown below canvas when asset is selected ───────────
 function SelectedAssetPanel({
   asset,
@@ -334,11 +423,16 @@ export function PixelArtOffice() {
   const [canvasScale, setCanvasScale] = useState(1);
   const [catalogOpen, setCatalogOpen] = useState(true);
   const officeNav = useOfficeNav();
+  const { openChat } = useChatPanel();
 
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [generatingType, setGeneratingType] = useState<OfficeAssetType | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [generatingSprites, setGeneratingSprites] = useState(false);
+  const [generatingAllAssets, setGeneratingAllAssets] = useState(false);
+  const [assetProgress, setAssetProgress] = useState("");
 
   const [studioImage, setStudioImage] = useState<HTMLImageElement | null>(null);
   const [studioAssetUrl, setStudioAssetUrl] = useState<string | null>(null);
@@ -348,10 +442,42 @@ export function PixelArtOffice() {
   const [assets, setAssets] = useState<OfficeAssetInstance[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [changingAngleFor, setChangingAngleFor] = useState<string | null>(null);
+  const [selectedAgentSlug, setSelectedAgentSlug] = useState<string | null>(null);
+  const [agentSizes, setAgentSizes] = useState<Record<string, number>>({});
 
   const [activeCategory, setActiveCategory] = useState<string>("mobilier");
 
+  // Zone states
+  const [zones, setZones] = useState<OfficeZone[]>([]);
+  const [zoneManagerOpen, setZoneManagerOpen] = useState(false);
+  const [isDrawingZone, setIsDrawingZone] = useState(false);
+  const [zoneDrawingShape, setZoneDrawingShape] = useState<'rectangle' | 'polygon'>('rectangle');
+  const [showZonesOverlay, setShowZonesOverlay] = useState(true);
+  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [tempZoneBounds, setTempZoneBounds] = useState<ZoneBoundsData | null>(null);
+
   useEffect(() => { initializeStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  useEffect(() => {
+    fetch("/api/agents")
+      .then((response) => response.json())
+      .then((data) => setAgents(Array.isArray(data) ? data : []))
+      .catch(() => setAgents([]));
+  }, []);
+
+  // Load zones
+  useEffect(() => {
+    const loadZones = async () => {
+      try {
+        const fetchedZones = await ZoneService.getAllZones();
+        setZones(fetchedZones);
+      } catch (err) {
+        console.error("Error loading zones:", err);
+      }
+    };
+    
+    loadZones();
+  }, []);
 
   const [containerSize, setContainerSize] = useState({ width: FALLBACK_CANVAS_W, height: FALLBACK_CANVAS_H });
 
@@ -373,6 +499,161 @@ export function PixelArtOffice() {
   const stageW = containerSize.width;
   const stageH = containerSize.height;
   const selectedAsset = assets.find((a) => a.id === selectedAssetId) ?? null;
+  const hasMissingSprites = agents.some((agent) => !agent.lpc_sprite_url);
+
+  const PLACEABLE_ASSET_TYPES: PlaceableOfficeAssetType[] = [
+    "desk_workstation", "chair_office", "plant_green_1", "plant_green_2",
+    "plant_green_3", "cabinet_storage", "trash_can", "water_fountain", "coffee_machine",
+  ];
+
+  const generateAllAssets = async () => {
+    setGeneratingAllAssets(true);
+    const total = PLACEABLE_ASSET_TYPES.length;
+    for (let i = 0; i < total; i++) {
+      const asset = PLACEABLE_ASSET_TYPES[i];
+      setAssetProgress(`${ASSET_LABELS[asset]} NO (${i + 1}/${total})`);
+      const r1 = await fetch("/api/ai/generate-office-asset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset, variant: 1, force: true }),
+      });
+      const d1 = await r1.json();
+      if (d1.url) persistVariant(asset, 1, d1.url);
+
+      for (const variant of [2, 3, 4] as const) {
+        setAssetProgress(`${ASSET_LABELS[asset]} ${VARIANT_LABELS[variant]} (${i + 1}/${total})`);
+        const r = await fetch("/api/ai/generate-office-asset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ asset, variant, force: true, use_v1_init: true }),
+        });
+        const d = await r.json();
+        if (d.url) persistVariant(asset, variant, d.url);
+      }
+    }
+    setGeneratingAllAssets(false);
+    setAssetProgress("");
+  };
+
+  const syncAllAssets = async () => {
+    setAssetProgress("Sync…");
+    setGeneratingAllAssets(true);
+    await Promise.all(
+      PLACEABLE_ASSET_TYPES.map(async (asset) => {
+        const res = await fetch(`/api/ai/generate-office-asset?asset=${asset}`);
+        const data = await res.json();
+        if (!data.variants) return;
+        for (const v of [1, 2, 3, 4] as AssetVariant[]) {
+          const url = data.variants[v];
+          if (url) persistVariant(asset, v, url);
+        }
+      })
+    );
+    setGeneratingAllAssets(false);
+    setAssetProgress("");
+  };
+
+  const generateAllSprites = async () => {
+    setGeneratingSprites(true);
+    const missingAgents = agents.filter((agent) => !agent.lpc_sprite_url);
+
+    await Promise.all(
+      missingAgents.map((agent) =>
+        fetch(`/api/agents/${agent.slug}/generate-sprite`, { method: "POST" })
+          .then((response) => response.json())
+          .then((data) => {
+            if (!data.sprite_url) return;
+            setAgents((current) => current.map((entry) => (
+              entry.slug === agent.slug
+                ? { ...entry, lpc_sprite_url: data.sprite_url }
+                : entry
+            )));
+          })
+          .catch(() => undefined)
+      )
+    );
+
+    setGeneratingSprites(false);
+  };
+
+  // ── Zone management functions ──────────────────────────────────────────────
+  const handleZoneCreated = async (zone: OfficeZone) => {
+    setZones(prev => [...prev, zone]);
+    setTempZoneBounds(null);
+  };
+
+  const handleZoneUpdated = async (zone: OfficeZone) => {
+    setZones(prev => prev.map(z => z.id === zone.id ? zone : z));
+  };
+
+  const handleZoneDeleted = async (zoneId: string) => {
+    setZones(prev => prev.filter(z => z.id !== zoneId));
+    if (selectedZoneId === zoneId) {
+      setSelectedZoneId(null);
+    }
+  };
+
+  const handleZoneDrawingComplete = async (bounds: ZoneBoundsData) => {
+    setTempZoneBounds(bounds);
+    setIsDrawingZone(false);
+    setZoneManagerOpen(true);
+  };
+
+  const handleZoneDrawingCancel = () => {
+    setIsDrawingZone(false);
+    setTempZoneBounds(null);
+  };
+
+  const handleZoneClick = (zone: OfficeZone) => {
+    setSelectedZoneId(zone.id === selectedZoneId ? null : zone.id);
+  };
+
+  const toggleZonesOverlay = () => {
+    setShowZonesOverlay(prev => !prev);
+  };
+
+  const startDrawingZone = (shape: 'rectangle' | 'polygon') => {
+    setIsDrawingZone(true);
+    setZoneDrawingShape(shape);
+    setSelectedAssetId(null);
+    setSelectedAgentSlug(null);
+  };
+
+  // Convert OfficeZone to AgentZone for LpcAutoWalker
+  const getAgentZones = useMemo(() => {
+    return (agentSlug: string, agentDepartment: string): AgentZone[] => {
+      const agentSpecificZones = zones.filter(z => 
+        z.is_active && (z.agent_slug === agentSlug || z.department === agentDepartment || (!z.agent_slug && !z.department))
+      );
+
+      return agentSpecificZones.map(zone => {
+        // Convert ZoneBoundsData to ZoneBounds (rectangle approximation for polygons)
+        let bounds: ZoneBounds;
+        if (zone.bounds.type === 'rectangle') {
+          bounds = zone.bounds.bounds;
+        } else {
+          // For polygons, use bounding box
+          const points = zone.bounds.points;
+          const xs = points.map(p => p[0]);
+          const ys = points.map(p => p[1]);
+          bounds = {
+            x1: Math.min(...xs),
+            y1: Math.min(...ys),
+            x2: Math.max(...xs),
+            y2: Math.max(...ys),
+          };
+        }
+
+        return {
+          id: zone.id,
+          bounds,
+          isExclusive: zone.is_exclusive,
+          priority: zone.agent_slug === agentSlug ? 3 : 
+                   zone.department === agentDepartment ? 2 : 1,
+        };
+      });
+    };
+  }, [zones]);
 
   // ── Persist variant URL ────────────────────────────────────────────────────
   const persistVariant = (assetType: OfficeAssetType, variant: AssetVariant, url: string) => {
@@ -560,6 +841,16 @@ export function PixelArtOffice() {
     }));
   };
 
+  // ── Resize selected agent ──────────────────────────────────────────────────
+  const resizeSelectedAgent = (mult: number) => {
+    if (!selectedAgentSlug) return;
+    setAgentSizes((prev) => {
+      const currentSize = prev[selectedAgentSlug] || 1.0;
+      const newSize = Math.max(0.5, Math.min(3.0, currentSize * mult));
+      return { ...prev, [selectedAgentSlug]: newSize };
+    });
+  };
+
   // ── Duplicate / delete ─────────────────────────────────────────────────────
   const duplicateSelected = () => {
     if (!selectedAsset) return;
@@ -627,7 +918,12 @@ export function PixelArtOffice() {
           height={stageH}
           scaleX={canvasScale}
           scaleY={canvasScale}
-          onClick={(e) => { if (e.target === e.target.getStage()) setSelectedAssetId(null); }}
+          onClick={(e) => { 
+            if (e.target === e.target.getStage()) {
+              setSelectedAssetId(null);
+              setSelectedAgentSlug(null);
+            }
+          }}
         >
           <Layer>
             {/* Fond noir plein écran (bandes noires letterbox/pillarbox) */}
@@ -644,6 +940,32 @@ export function PixelArtOffice() {
               const offsetY = (availH - drawH) / 2;
               return <KImage image={studioImage} x={offsetX} y={offsetY} width={drawW} height={drawH} />;
             })()}
+            
+            {/* Zone overlay */}
+            {showZonesOverlay && zones.length > 0 && (
+              <ZoneOverlay
+                width={stageW / canvasScale}
+                height={stageH / canvasScale}
+                zones={zones}
+                showLabels={true}
+                showOnlyActive={true}
+                selectedZoneId={selectedZoneId}
+                onZoneClick={handleZoneClick}
+              />
+            )}
+            
+            {/* Zone drawing tool */}
+            {isDrawingZone && (
+              <ZoneDrawingTool
+                width={stageW / canvasScale}
+                height={stageH / canvasScale}
+                isDrawing={isDrawingZone}
+                shapeType={zoneDrawingShape}
+                onDrawingComplete={handleZoneDrawingComplete}
+                onDrawingCancel={handleZoneDrawingCancel}
+                existingZones={zones.map(z => z.bounds)}
+              />
+            )}
             {assets.map((asset) => {
               const isSelected = asset.id === selectedAssetId;
               return (
@@ -676,6 +998,49 @@ export function PixelArtOffice() {
         </Stage>
       </div>
 
+      <div className="absolute inset-0 z-20 pointer-events-none">
+        {agents
+          .filter((agent) => agent.lpc_sprite_url)
+          .map((agent, index) => {
+            const pos = DESK_POSITIONS[index % DESK_POSITIONS.length];
+            const agentSize = agentSizes[agent.slug] || 1.0;
+            const isSelected = selectedAgentSlug === agent.slug;
+
+            return (
+              <div
+                key={agent.slug}
+                className={`absolute cursor-pointer ${isSelected ? 'z-50' : ''}`}
+                style={{
+                  left: `${pos.x}%`,
+                  top: `${pos.y}%`,
+                  transform: `translate(-50%, -50%) scale(${agentSize})`,
+                  transformOrigin: 'center',
+                  transition: 'transform 0.2s ease',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedAgentSlug(agent.slug);
+                  setSelectedAssetId(null);
+                }}
+              >
+                <LpcAutoWalker
+                  spriteUrl={agent.lpc_sprite_url!}
+                  agentName={agent.name}
+                  onClick={() => openChat(agent.slug)}
+                  containerW={containerSize.width}
+                  containerH={containerSize.height}
+                  initialX={0.5}
+                  initialY={0.5}
+                  className="pointer-events-auto"
+                />
+                {isSelected && (
+                  <div className="absolute -inset-2 border-2 border-indigo-400 rounded-lg pointer-events-none animate-pulse"></div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
       {/* ── HUD: bouton nav (coin haut-gauche) ── */}
       <button
         onClick={officeNav.toggle}
@@ -685,8 +1050,77 @@ export function PixelArtOffice() {
         <Menu className="w-4 h-4" />
       </button>
 
+      {/* ── HUD: info message (coin haut-gauche, sous le menu) ── */}
+      <div className="absolute top-14 left-3 z-30 max-w-xs">
+        <div className="text-[11px] text-white/40 bg-black/30 backdrop-blur-sm px-3 py-2 rounded-lg border border-white/10">
+          <div className="font-semibold text-white/60 mb-1">💡 Comment redimensionner :</div>
+          <div className="space-y-1">
+            <div>• <span className="text-indigo-300">Cliquez sur un collaborateur</span> pour le sélectionner</div>
+            <div>• Utilisez les boutons <span className="text-amber-300">+/-</span> pour ajuster la taille</div>
+            <div>• Cliquez sur le bureau pour désélectionner</div>
+          </div>
+        </div>
+      </div>
+
       {/* ── HUD: toolbar flottante (coin haut-droite) ── */}
       <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+        {/* Zone controls */}
+        <div className="flex items-center gap-1 border-r border-white/10 pr-2">
+          <button
+            onClick={toggleZonesOverlay}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
+              showZonesOverlay
+                ? 'bg-indigo-600/70 border-indigo-400/30 text-white hover:bg-indigo-500/70'
+                : 'bg-black/50 border-white/10 text-white/60 hover:text-white hover:bg-black/70'
+            }`}
+            title={showZonesOverlay ? "Masquer les zones" : "Afficher les zones"}
+          >
+            {showZonesOverlay ? (
+              <Eye className="w-3 h-3" />
+            ) : (
+              <EyeOff className="w-3 h-3" />
+            )}
+            Zones
+          </button>
+          
+          <button
+            onClick={() => startDrawingZone('rectangle')}
+            disabled={isDrawingZone}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
+              isDrawingZone && zoneDrawingShape === 'rectangle'
+                ? 'bg-amber-600/70 border-amber-400/30 text-white'
+                : 'bg-black/50 border-white/10 text-white/60 hover:text-white hover:bg-black/70'
+            }`}
+            title="Dessiner une zone rectangulaire"
+          >
+            <Square className="w-3 h-3" />
+            Rectangle
+          </button>
+          
+          <button
+            onClick={() => startDrawingZone('polygon')}
+            disabled={isDrawingZone}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
+              isDrawingZone && zoneDrawingShape === 'polygon'
+                ? 'bg-amber-600/70 border-amber-400/30 text-white'
+                : 'bg-black/50 border-white/10 text-white/60 hover:text-white hover:bg-black/70'
+            }`}
+            title="Dessiner une zone polygonale"
+          >
+            <Hexagon className="w-3 h-3" />
+            Polygone
+          </button>
+          
+          <button
+            onClick={() => setZoneManagerOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[11px] text-white/60 hover:text-white hover:bg-black/70 transition-all"
+            title="Gérer les zones"
+          >
+            <Map className="w-3 h-3" />
+            Gérer
+          </button>
+        </div>
+        
         {saveMessage && (
           <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-white/10">
             <Check className="w-3 h-3" /> {saveMessage}
@@ -697,6 +1131,39 @@ export function PixelArtOffice() {
             {errorMessage}
           </span>
         )}
+        {hasMissingSprites && (
+          <button
+            onClick={() => void generateAllSprites()}
+            disabled={generatingSprites}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600/70 backdrop-blur border border-emerald-400/30 text-[11px] text-white hover:bg-emerald-500/70 transition-all disabled:opacity-30"
+            title="Générer les sprites LPC des agents"
+          >
+            {generatingSprites ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Sparkles className="w-3 h-3" />
+            )}
+            Sprites
+          </button>
+        )}
+        <button
+          onClick={() => void syncAllAssets()}
+          disabled={generatingAllAssets}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600/70 backdrop-blur border border-sky-400/30 text-[11px] text-white hover:bg-sky-500/70 transition-all disabled:opacity-30"
+          title="Sync — recharge les assets déjà générés depuis Supabase sans régénérer"
+        >
+          {generatingAllAssets && assetProgress === "Sync…" ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="text-[10px]">↻</span>}
+          Sync
+        </button>
+        <button
+          onClick={() => void generateAllAssets()}
+          disabled={generatingAllAssets}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600/70 backdrop-blur border border-violet-400/30 text-[11px] text-white hover:bg-violet-500/70 transition-all disabled:opacity-30"
+          title="Générer tous les assets NO (txt2img) puis NE/SE/SO (img2img)"
+        >
+          {generatingAllAssets && assetProgress !== "Sync…" ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="text-[10px]">⬡</span>}
+          {generatingAllAssets && assetProgress !== "Sync…" ? assetProgress : "Assets"}
+        </button>
         <button
           onClick={() => void loadBackground(true)}
           disabled={status === "loading"}
@@ -794,6 +1261,24 @@ export function PixelArtOffice() {
             onDelete={deleteSelected}
             onClose={() => setSelectedAssetId(null)}
           />
+        </div>
+      )}
+
+      {/* ── HUD: panel agent sélectionné (overlay bas, centré) ── */}
+      {selectedAgentSlug && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-lg px-3">
+          {(() => {
+            const agent = agents.find(a => a.slug === selectedAgentSlug);
+            if (!agent) return null;
+            return (
+              <SelectedAgentPanel
+                agent={agent}
+                size={agentSizes[agent.slug] || 1.0}
+                onSize={resizeSelectedAgent}
+                onClose={() => setSelectedAgentSlug(null)}
+              />
+            );
+          })()}
         </div>
       )}
     </div>

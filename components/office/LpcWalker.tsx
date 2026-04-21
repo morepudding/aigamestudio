@@ -13,12 +13,13 @@
  * The CSS animation steps through frames using `steps(9)`.
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 
 const FRAME_SIZE = 64;   // px — one LPC tile
 const FRAMES = 9;        // frames per row
 const SCALE = 2;         // pixel-perfect ×2 upscale
 const DISPLAY = FRAME_SIZE * SCALE; // 128 px on screen
+const FRAME_DURATION_MS = 110;
 
 // Row index → y offset inside the spritesheet
 const DIR_ROW: Record<"N" | "W" | "S" | "E", number> = {
@@ -48,10 +49,20 @@ export function LpcWalker({
   title,
 }: LpcWalkerProps) {
   const row = DIR_ROW[direction];
-  const yOffset = -(row * FRAME_SIZE * SCALE);
+  const [frameIndex, setFrameIndex] = useState(0);
 
-  // The animation is pure CSS. The background-image cycles frames automatically.
-  const animName = walking ? "lpcWalk" : undefined;
+  useEffect(() => {
+    if (!walking) {
+      setFrameIndex(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setFrameIndex((current) => (current + 1) % FRAMES);
+    }, FRAME_DURATION_MS);
+
+    return () => window.clearInterval(timer);
+  }, [walking]);
 
   return (
     <div
@@ -62,16 +73,28 @@ export function LpcWalker({
       style={{
         width: DISPLAY,
         height: DISPLAY,
+        overflow: "hidden",
+        position: "relative",
         imageRendering: "pixelated",
-        backgroundImage: `url(${spriteUrl})`,
-        backgroundRepeat: "no-repeat",
-        backgroundSize: `${FRAMES * DISPLAY}px ${4 * DISPLAY}px`,
-        backgroundPositionY: `${yOffset}px`,
-        animation: animName
-          ? `lpcWalk 0.8s steps(${FRAMES}) infinite`
-          : undefined,
       }}
-    />
+    >
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: FRAMES * DISPLAY,
+          height: 4 * DISPLAY,
+          imageRendering: "pixelated",
+          backgroundImage: `url(${spriteUrl})`,
+          backgroundRepeat: "no-repeat",
+          backgroundSize: `${FRAMES * DISPLAY}px ${4 * DISPLAY}px`,
+          transform: `translate(${-frameIndex * DISPLAY}px, ${-row * DISPLAY}px)`,
+          transformOrigin: "top left",
+          willChange: walking ? "transform" : undefined,
+        }}
+      />
+    </div>
   );
 }
 
@@ -84,17 +107,42 @@ export interface ZoneBounds {
   x1: number; y1: number; x2: number; y2: number;
 }
 
+// Extended interface for multiple zones support
+export interface AgentZone {
+  id: string;
+  bounds: ZoneBounds;
+  isExclusive: boolean;
+  priority: number;
+}
+
 function randomWaypoint(
   containerW: number,
   containerH: number,
-  bounds?: ZoneBounds
+  zones?: AgentZone[]
 ): Waypoint {
   const margin = DISPLAY * 0.6;
-  if (bounds) {
+  
+  // If no zones or empty zones array, use full container
+  if (!zones || zones.length === 0) {
+    return {
+      x: margin + Math.random() * (containerW - margin * 2),
+      y: margin + Math.random() * (containerH - margin * 2),
+    };
+  }
+  
+  // Filter for exclusive zones first, then sort by priority
+  const exclusiveZones = zones.filter(z => z.isExclusive);
+  const availableZones = exclusiveZones.length > 0 ? exclusiveZones : zones;
+  const sortedZones = [...availableZones].sort((a, b) => b.priority - a.priority);
+  
+  // Try each zone in order of priority
+  for (const zone of sortedZones) {
+    const { bounds } = zone;
     const minX = bounds.x1 * containerW + margin;
     const maxX = bounds.x2 * containerW - margin;
     const minY = bounds.y1 * containerH + margin;
     const maxY = bounds.y2 * containerH - margin;
+    
     if (maxX > minX && maxY > minY) {
       return {
         x: minX + Math.random() * (maxX - minX),
@@ -102,10 +150,50 @@ function randomWaypoint(
       };
     }
   }
+  
+  // Fallback to full container if no valid zones
   return {
     x: margin + Math.random() * (containerW - margin * 2),
     y: margin + Math.random() * (containerH - margin * 2),
   };
+}
+
+// Helper function to check if a point is within any zone
+function isPointInZones(
+  x: number,
+  y: number,
+  zones: AgentZone[],
+  containerW: number,
+  containerH: number
+): boolean {
+  if (!zones || zones.length === 0) return true;
+  
+  const normalizedX = x / containerW;
+  const normalizedY = y / containerH;
+  
+  for (const zone of zones) {
+    const { bounds, isExclusive } = zone;
+    if (normalizedX >= bounds.x1 && normalizedX <= bounds.x2 &&
+        normalizedY >= bounds.y1 && normalizedY <= bounds.y2) {
+      return true;
+    }
+  }
+  
+  // Check if agent is in an exclusive zone (must stay inside)
+  const exclusiveZones = zones.filter(z => z.isExclusive);
+  if (exclusiveZones.length > 0) {
+    // If in exclusive zone, must stay in that zone
+    for (const zone of exclusiveZones) {
+      const { bounds } = zone;
+      if (normalizedX >= bounds.x1 && normalizedX <= bounds.x2 &&
+          normalizedY >= bounds.y1 && normalizedY <= bounds.y2) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  return true; // Non-exclusive zones allow movement outside
 }
 
 function dirFromDelta(dx: number, dy: number): Direction {
@@ -116,6 +204,8 @@ function dirFromDelta(dx: number, dy: number): Direction {
 export interface LpcAutoWalkerProps extends Omit<LpcWalkerProps, "walking" | "direction"> {
   /** Agent name shown in tooltip */
   agentName?: string;
+  /** Agent department for zone filtering */
+  agentDepartment?: string;
   /** Called on click */
   onClick?: () => void;
   /** Parent container width in px */
@@ -125,13 +215,16 @@ export interface LpcAutoWalkerProps extends Omit<LpcWalkerProps, "walking" | "di
   /** Initial position (fractional 0–1) */
   initialX?: number;
   initialY?: number;
-  /** Optional zone the agent must stay within */
+  /** Optional single zone (backward compatibility) */
   zoneBounds?: ZoneBounds;
+  /** Multiple zones with priorities */
+  zones?: AgentZone[];
 }
 
 export function LpcAutoWalker({
   spriteUrl,
   agentName,
+  agentDepartment,
   onClick,
   containerW,
   containerH,
@@ -139,6 +232,7 @@ export function LpcAutoWalker({
   initialY = 0.5,
   className = "",
   zoneBounds,
+  zones = [],
 }: LpcAutoWalkerProps) {
   const [pos, setPos] = useState<Waypoint>({
     x: initialX * containerW,
@@ -151,11 +245,27 @@ export function LpcAutoWalker({
   const animRef = useRef<number | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Convert legacy zoneBounds to zones array for backward compatibility
+  const effectiveZones = useMemo(() => {
+    if (zones && zones.length > 0) {
+      return zones;
+    }
+    if (zoneBounds) {
+      return [{
+        id: 'legacy-zone',
+        bounds: zoneBounds,
+        isExclusive: true,
+        priority: 1,
+      }];
+    }
+    return [];
+  }, [zoneBounds, zones]);
+
   const pickNewTarget = useCallback(() => {
-    const wp = randomWaypoint(containerW, containerH, zoneBounds);
+    const wp = randomWaypoint(containerW, containerH, effectiveZones);
     setTarget(wp);
     setWalking(true);
-  }, [containerW, containerH, zoneBounds]);
+  }, [containerW, containerH, effectiveZones]);
 
   // Schedule next walk after an idle pause
   const scheduleNextWalk = useCallback(() => {
@@ -163,24 +273,22 @@ export function LpcAutoWalker({
     idleTimerRef.current = setTimeout(pickNewTarget, delay);
   }, [pickNewTarget]);
 
-  // When zone changes and agent is outside, pick a new target inside
+  // When zones change and agent is outside, pick a new target inside
   useEffect(() => {
-    if (!zoneBounds) return;
+    if (effectiveZones.length === 0) return;
+    
     setPos((current) => {
-      const minX = zoneBounds.x1 * containerW;
-      const maxX = zoneBounds.x2 * containerW;
-      const minY = zoneBounds.y1 * containerH;
-      const maxY = zoneBounds.y2 * containerH;
-      if (current.x < minX || current.x > maxX || current.y < minY || current.y > maxY) {
-        // Immediately pick a target inside the zone
-        const wp = randomWaypoint(containerW, containerH, zoneBounds);
+      const isInside = isPointInZones(current.x, current.y, effectiveZones, containerW, containerH);
+      if (!isInside) {
+        // Immediately pick a target inside the zones
+        const wp = randomWaypoint(containerW, containerH, effectiveZones);
         setTarget(wp);
         setWalking(true);
       }
       return current;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoneBounds]);
+  }, [effectiveZones]);
 
   // Kick off on mount
   useEffect(() => {
@@ -218,6 +326,16 @@ export function LpcAutoWalker({
         const moved = SPEED * (dt / 16.67);
         const nx = current.x + (dx / dist) * moved;
         const ny = current.y + (dy / dist) * moved;
+        
+        // Check if new position is within allowed zones
+        const isInside = isPointInZones(nx, ny, effectiveZones, containerW, containerH);
+        if (!isInside) {
+          // If moving outside zones, pick a new target inside
+          const newTarget = randomWaypoint(containerW, containerH, effectiveZones);
+          setTarget(newTarget);
+          return current; // Stay at current position
+        }
+        
         setDirection(dirFromDelta(dx, dy));
         return { x: nx, y: ny };
       });
@@ -229,7 +347,7 @@ export function LpcAutoWalker({
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [target, scheduleNextWalk]);
+  }, [target, scheduleNextWalk, effectiveZones, containerW, containerH]);
 
   return (
     <div

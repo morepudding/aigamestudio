@@ -1,5 +1,5 @@
-import { IsometricOffice } from "@/components/office/IsometricOffice";
+import { PixelArtOffice } from "@/components/office/PixelArtOffice";
 
 export default function Home() {
-  return <IsometricOffice />;
+  return <PixelArtOffice />;
 }

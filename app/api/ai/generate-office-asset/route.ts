@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { generatePixelArtLocally } from "@/lib/services/comfyui";
+import { PNG } from "pngjs";
+import { generatePixelArtLocally, generateImg2ImgLocally } from "@/lib/services/comfyui";
 
 export const maxDuration = 120;
 
@@ -27,75 +28,79 @@ const VARIANT_LABELS: Record<AssetVariant, string> = {
   4: "SO",
 };
 
-const STYLE = "16-bit isometric pixel art, transparent background, no white background, no shadows outside object";
+const STYLE = "16-bit isometric pixel art sprite, ONE single isolated object ONLY, crisp pixel outlines, clean pixel edges, limited color palette, game asset style, transparent background, no floor, no room, no walls, no other furniture nearby, object alone centered on transparent background";
+const LORA_TAG = process.env.SD_ISOMETRIC_LORA
+  ? `<lora:${process.env.SD_ISOMETRIC_LORA}:${process.env.SD_ISOMETRIC_LORA_WEIGHT ?? "0.7"}>`
+  : "";
+const SCENE_PREFIX = LORA_TAG ? `Isometric_Setting, ` : "";
 
 // ─── Per-asset per-angle prompts ──────────────────────────────────────────────
 // v1=NW (front-left face visible), v2=NE (front-right face visible),
 // v3=SE (back-right, seen from behind), v4=SW (back-left face visible)
 const PROMPTS: Record<OfficeAssetType, Record<AssetVariant, string>> = {
   studio_empty: {
-    1: `${STYLE}, empty indie game studio interior, view from north-west: left wall and front wall visible, concrete floor, exposed brick`,
-    2: `${STYLE}, empty indie game studio interior, view from north-east: right wall and front wall visible, concrete floor, exposed brick`,
-    3: `${STYLE}, empty indie game studio interior, view from south-east: right wall and back wall visible, concrete floor, exposed brick`,
-    4: `${STYLE}, empty indie game studio interior, view from south-west: left wall and back wall visible, concrete floor, exposed brick`,
+    1: `${SCENE_PREFIX}${STYLE}, empty indie game studio interior, view from north-west: left wall and front wall visible, concrete floor, exposed brick ${LORA_TAG}`,
+    2: `${SCENE_PREFIX}${STYLE}, empty indie game studio interior, view from north-east: right wall and front wall visible, concrete floor, exposed brick ${LORA_TAG}`,
+    3: `${SCENE_PREFIX}${STYLE}, empty indie game studio interior, view from south-east: right wall and back wall visible, concrete floor, exposed brick ${LORA_TAG}`,
+    4: `${SCENE_PREFIX}${STYLE}, empty indie game studio interior, view from south-west: left wall and back wall visible, concrete floor, exposed brick ${LORA_TAG}`,
   },
   desk_workstation: {
-    1: `${STYLE}, wooden office desk with monitor facing viewer, keyboard on left side, mouse on right, view from north-west showing front-left of desk`,
-    2: `${STYLE}, wooden office desk with monitor facing away from viewer, keyboard on right side, view from north-east showing front-right of desk`,
-    3: `${STYLE}, wooden office desk seen from behind, back panel of monitor visible, cables visible, view from south-east`,
-    4: `${STYLE}, wooden office desk seen from back-left, underside of desk visible, legs prominent, view from south-west`,
+    1: `${STYLE}, simple flat rectangular wooden desk, ONE monitor on desk surface, keyboard in front, mouse to the right, NO chair, NO person, isometric north-west angle, front face and left side of desk visible`,
+    2: `${STYLE}, simple flat rectangular wooden desk, ONE monitor on desk surface, keyboard in front, mouse to the left, NO chair, NO person, isometric north-east angle, front face and right side of desk visible`,
+    3: `${STYLE}, simple flat rectangular wooden desk seen from behind, back of monitor visible, cables hanging, NO chair, NO person, isometric south-east angle`,
+    4: `${STYLE}, simple flat rectangular wooden desk seen from back-left, four legs visible, NO chair, NO person, isometric south-west angle`,
   },
   chair_office: {
-    1: `${STYLE}, ergonomic office chair, dark fabric seat, view from north-west: front-left visible, seat cushion and armrest on left side prominent`,
-    2: `${STYLE}, ergonomic office chair, dark fabric seat, view from north-east: front-right visible, seat cushion and armrest on right side prominent`,
-    3: `${STYLE}, ergonomic office chair, dark fabric seat, view from south-east: backrest fully visible, back of headrest and lumbar support prominent`,
-    4: `${STYLE}, ergonomic office chair, dark fabric seat, view from south-west: backrest visible from left side, lumbar support and left rear leg prominent`,
+    1: `${STYLE}, single ergonomic swivel office chair, five-wheel star base, padded dark seat, backrest, two armrests, NO desk, NO monitor, NO room, isometric north-west angle, front-left face visible`,
+    2: `${STYLE}, single ergonomic swivel office chair, five-wheel star base, padded dark seat, backrest, two armrests, NO desk, NO monitor, NO room, isometric north-east angle, front-right face visible`,
+    3: `${STYLE}, single ergonomic swivel office chair seen from behind, backrest and headrest prominent, five-wheel base, NO desk, NO monitor, isometric south-east angle`,
+    4: `${STYLE}, single ergonomic swivel office chair seen from back-left, lumbar support visible, five-wheel base, NO desk, NO monitor, isometric south-west angle`,
   },
   plant_green_1: {
-    1: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-west: left leaves prominent`,
-    2: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-east: right leaves prominent`,
-    3: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-east: back leaves and stem visible`,
-    4: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-west: back-left leaves and pot base visible`,
+    1: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-west: left leaves prominent ${LORA_TAG}`,
+    2: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from north-east: right leaves prominent ${LORA_TAG}`,
+    3: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-east: back leaves and stem visible ${LORA_TAG}`,
+    4: `${STYLE}, potted monstera plant, broad tropical leaves, terracotta pot, view from south-west: back-left leaves and pot base visible ${LORA_TAG}`,
   },
   plant_green_2: {
-    1: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-west`,
-    2: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-east`,
-    3: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-east: back of leaves visible`,
-    4: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-west: back-left angle`,
+    1: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-west ${LORA_TAG}`,
+    2: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from north-east ${LORA_TAG}`,
+    3: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-east: back of leaves visible ${LORA_TAG}`,
+    4: `${STYLE}, potted snake plant, tall upright sword-shaped leaves, white pot, view from south-west: back-left angle ${LORA_TAG}`,
   },
   plant_green_3: {
-    1: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-west: left fronds drooping`,
-    2: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-east: right fronds drooping`,
-    3: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-east: back fronds visible`,
-    4: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-west: back-left fronds`,
+    1: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-west: left fronds drooping ${LORA_TAG}`,
+    2: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from north-east: right fronds drooping ${LORA_TAG}`,
+    3: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-east: back fronds visible ${LORA_TAG}`,
+    4: `${STYLE}, potted fern plant, dense cascading fronds, round pot, view from south-west: back-left fronds ${LORA_TAG}`,
   },
   cabinet_storage: {
-    1: `${STYLE}, metal office storage cabinet, closed doors with handle, view from north-west: front face and left side panel visible`,
-    2: `${STYLE}, metal office storage cabinet, closed doors with handle, view from north-east: front face and right side panel visible`,
-    3: `${STYLE}, metal office storage cabinet, view from south-east: back panel and right side visible, no handles`,
-    4: `${STYLE}, metal office storage cabinet, view from south-west: back panel and left side visible, no handles`,
+    1: `${STYLE}, single narrow tall storage cabinet, ONE front door with a horizontal handle bar, light beige wooden body, NO other furniture, isometric north-west angle, front and left side visible`,
+    2: `${STYLE}, single narrow tall storage cabinet, ONE front door with a horizontal handle bar, light beige wooden body, NO other furniture, isometric north-east angle, front and right side visible`,
+    3: `${STYLE}, single narrow tall storage cabinet, light beige wooden body, NO other furniture, isometric south-east angle, back and right side visible`,
+    4: `${STYLE}, single narrow tall storage cabinet, light beige wooden body, NO other furniture, isometric south-west angle, back and left side visible`,
   },
   trash_can: {
-    1: `${STYLE}, small office trash bin, round, open top, view from north-west: front-left visible`,
-    2: `${STYLE}, small office trash bin, round, open top, view from north-east: front-right visible`,
-    3: `${STYLE}, small office trash bin, round, open top, view from south-east: back-right visible`,
-    4: `${STYLE}, small office trash bin, round, open top, view from south-west: back-left visible`,
+    1: `${STYLE}, single small cylindrical office trash bin, dark color, open top, NO other objects around it, isometric north-west angle`,
+    2: `${STYLE}, single small cylindrical office trash bin, dark color, open top, NO other objects around it, isometric north-east angle`,
+    3: `${STYLE}, single small cylindrical office trash bin, dark color, NO other objects, isometric south-east angle`,
+    4: `${STYLE}, single small cylindrical office trash bin, dark color, NO other objects, isometric south-west angle`,
   },
   water_fountain: {
-    1: `${STYLE}, office water cooler with blue bottle on top, view from north-west: front-left, dispenser taps visible`,
-    2: `${STYLE}, office water cooler with blue bottle on top, view from north-east: front-right, dispenser taps visible`,
-    3: `${STYLE}, office water cooler with blue bottle on top, view from south-east: back-right panel, no taps`,
-    4: `${STYLE}, office water cooler with blue bottle on top, view from south-west: back-left panel, no taps`,
+    1: `${STYLE}, single office water cooler dispenser, large blue water bottle on top, white body, two tap buttons at front, NO other objects, isometric north-west angle, front-left visible`,
+    2: `${STYLE}, single office water cooler dispenser, large blue water bottle on top, white body, two tap buttons at front, NO other objects, isometric north-east angle, front-right visible`,
+    3: `${STYLE}, single office water cooler dispenser, large blue water bottle on top, white body, NO other objects, isometric south-east angle, back panel visible`,
+    4: `${STYLE}, single office water cooler dispenser, large blue water bottle on top, white body, NO other objects, isometric south-west angle, back-left visible`,
   },
   coffee_machine: {
-    1: `${STYLE}, office coffee machine, buttons and spout facing viewer, view from north-west: front-left, control panel and coffee spout prominent`,
-    2: `${STYLE}, office coffee machine, view from north-east: front-right, side of machine and buttons visible`,
-    3: `${STYLE}, office coffee machine, view from south-east: back of machine, ventilation grille visible`,
-    4: `${STYLE}, office coffee machine, view from south-west: back-left, power cable visible`,
+    1: `${STYLE}, single compact coffee machine, black body, front panel with buttons and coffee spout, NO other objects, isometric north-west angle, front-left face visible`,
+    2: `${STYLE}, single compact coffee machine, black body, front panel with buttons and coffee spout, NO other objects, isometric north-east angle, front-right face visible`,
+    3: `${STYLE}, single compact coffee machine, black body, back panel with ventilation, NO other objects, isometric south-east angle`,
+    4: `${STYLE}, single compact coffee machine, black body, back-left panel with power cable, NO other objects, isometric south-west angle`,
   },
 };
 
-const STORAGE_VERSION = "v3";
+const STORAGE_VERSION = "v4";
 const BUCKET = "office-assets";
 
 // ─── Supabase admin ───────────────────────────────────────────────────────────
@@ -111,10 +116,57 @@ function storagePath(asset: OfficeAssetType, variant: AssetVariant): string {
   return `editor-assets/${asset}-v${variant}-${STORAGE_VERSION}.png`;
 }
 
-// ─── Generate image via ComfyUI (local) ──────────────────────────────────────
+// ─── Background removal (flood-fill from edges) ───────────────────────────────
+function removeBackground(imageBuffer: Buffer): Buffer {
+  const png = PNG.sync.read(imageBuffer);
+  const { width, height, data } = png;
+  const THRESHOLD = 230;
+  const idx = (x: number, y: number) => (y * width + x) * 4;
+
+  const isBackground = (x: number, y: number): boolean => {
+    const i = idx(x, y);
+    if (data[i + 3] < 10) return true;
+    return data[i] > THRESHOLD && data[i + 1] > THRESHOLD && data[i + 2] > THRESHOLD;
+  };
+
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+  const enqueue = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const pos = y * width + x;
+    if (visited[pos] || !isBackground(x, y)) return;
+    visited[pos] = 1;
+    queue.push(x, y);
+  };
+
+  for (let x = 0; x < width; x++) { enqueue(x, 0); enqueue(x, height - 1); }
+  for (let y = 0; y < height; y++) { enqueue(0, y); enqueue(width - 1, y); }
+
+  while (queue.length > 0) {
+    const y = queue.pop()!;
+    const x = queue.pop()!;
+    data[idx(x, y) + 3] = 0;
+    enqueue(x + 1, y); enqueue(x - 1, y); enqueue(x, y + 1); enqueue(x, y - 1);
+  }
+
+  return PNG.sync.write(png, { colorType: 6, filterType: 4 });
+}
+
+// ─── Generate helpers ─────────────────────────────────────────────────────────
 async function generateImage(prompt: string): Promise<Buffer> {
   const result = await generatePixelArtLocally({ prompt, width: 512, height: 512 });
-  return result.buffer;
+  return removeBackground(result.buffer);
+}
+
+async function generateImageFromInit(prompt: string, initBuffer: Buffer): Promise<Buffer> {
+  const result = await generateImg2ImgLocally({
+    prompt,
+    initImageBuffer: initBuffer,
+    width: 512,
+    height: 512,
+    denoise: 0.65,
+  });
+  return removeBackground(result.buffer);
 }
 
 // ─── GET — list available variants for an asset ───────────────────────────────
@@ -149,12 +201,13 @@ export async function GET(req: NextRequest) {
 }
 
 // ─── POST — generate one variant ─────────────────────────────────────────────
-// Body: { asset, variant: 1|2|3|4, force?: boolean }
+// Body: { asset, variant: 1|2|3|4, force?: boolean, use_v1_init?: boolean }
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const asset = body?.asset as OfficeAssetType | undefined;
   const variant = (body?.variant ?? 1) as AssetVariant;
   const forceRegenerate = body?.force === true;
+  const useV1Init = body?.use_v1_init === true && variant !== 1;
 
   if (!asset || !(asset in PROMPTS)) {
     return NextResponse.json(
@@ -196,7 +249,15 @@ export async function POST(req: NextRequest) {
 
   let buffer: Buffer;
   try {
-    buffer = await generateImage(prompt);
+    if (useV1Init) {
+      const v1Path = storagePath(asset, 1);
+      const { data: v1Data, error: v1Err } = await supabaseAdmin.storage.from(BUCKET).download(v1Path);
+      if (v1Err || !v1Data) throw new Error("V1 (NO) not found — generate it first");
+      const v1Buffer = Buffer.from(await v1Data.arrayBuffer());
+      buffer = await generateImageFromInit(prompt, v1Buffer);
+    } else {
+      buffer = await generateImage(prompt);
+    }
   } catch (err) {
     console.error("[generate-office-asset] Generation failed:", (err as Error).message);
     return NextResponse.json({ error: (err as Error).message }, { status: 502 });

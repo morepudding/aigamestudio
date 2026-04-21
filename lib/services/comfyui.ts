@@ -8,6 +8,8 @@
 const SD_API_URL = process.env.SD_API_URL?.replace(/\/$/, "");
 const SD_CHECKPOINT = process.env.SD_CHECKPOINT ?? process.env.COMFYUI_CHECKPOINT;
 const SD_PIXEL_CHECKPOINT = process.env.SD_PIXEL_CHECKPOINT ?? process.env.COMFYUI_PIXEL_CHECKPOINT;
+const SD_ISOMETRIC_LORA = process.env.SD_ISOMETRIC_LORA ?? "Isometric_Setting";
+const SD_ISOMETRIC_LORA_WEIGHT = process.env.SD_ISOMETRIC_LORA_WEIGHT ?? "0.7";
 
 // ── ComfyUI (local fallback) ──────────────────────────────────────────────────
 const COMFY_URL = process.env.COMFYUI_URL ?? "http://127.0.0.1:8188";
@@ -21,7 +23,7 @@ const DEFAULT_NEGATIVE =
   "ugly, deformed face, extra fingers, bad anatomy, blurry, low quality, watermark, text, cartoon, anime, CGI, 3D render, painting, illustration, nsfw, nudity";
 
 const PIXEL_NEGATIVE =
-  "blurry, low quality, watermark, text, photorealistic, 3D render, smooth shading, anti-aliased, gradient, noise";
+  "blurry, low quality, watermark, text, photorealistic, 3D render, smooth shading, anti-aliased, gradient, noise, room interior, office scene, floor, wall, multiple objects, furniture set, open space, background environment, other furniture";
 
 export interface ComfyImageResult {
   buffer: Buffer;
@@ -253,7 +255,8 @@ async function fetchOutputImage(filename: string, subfolder: string): Promise<Co
 
 async function sdTxt2Img(
   opts: ComfyPortraitOptions,
-  overrideCheckpoint?: string
+  overrideCheckpoint?: string,
+  isPixelArt = false
 ): Promise<ComfyImageResult> {
   const url = `${SD_API_URL}/sdapi/v1/txt2img`;
   const body: Record<string, unknown> = {
@@ -261,9 +264,9 @@ async function sdTxt2Img(
     negative_prompt: opts.negativePrompt ?? DEFAULT_NEGATIVE,
     width: opts.width ?? 512,
     height: opts.height ?? 768,
-    steps: opts.steps ?? 25,
-    cfg_scale: opts.cfg ?? 7,
-    sampler_name: "Euler a",
+    steps: opts.steps ?? (isPixelArt ? 28 : 30),
+    cfg_scale: opts.cfg ?? (isPixelArt ? 9 : 7),
+    sampler_name: isPixelArt ? "DPM++ 2M Karras" : "Euler a",
     seed: opts.seed ?? -1,
     batch_size: 1,
   };
@@ -347,7 +350,13 @@ export async function generateImg2ImgLocally(opts: ComfyImg2ImgOptions): Promise
 }
 
 export async function generatePixelArtLocally(opts: ComfyPortraitOptions): Promise<ComfyImageResult> {
-  if (SD_API_URL) return sdTxt2Img({ ...opts, negativePrompt: opts.negativePrompt ?? PIXEL_NEGATIVE }, SD_PIXEL_CHECKPOINT);
+  if (SD_API_URL) {
+    return sdTxt2Img(
+      { ...opts, negativePrompt: opts.negativePrompt ?? PIXEL_NEGATIVE },
+      SD_PIXEL_CHECKPOINT,
+      true
+    );
+  }
   const workflow = buildPixelArtWorkflow(opts);
   const promptId = await queuePrompt(workflow);
   const { filename, subfolder } = await waitForResult(promptId);
