@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChatConversation } from "@/components/chat/ChatConversation";
 import { MessageCircle, ArrowLeft } from "lucide-react";
@@ -12,6 +12,8 @@ import {
   generateMemoryInterviewReply,
   extractMemories,
   shouldTriggerDiscovery,
+  markAgentConversationAsRead,
+  setMessageFeedback,
 } from "@/lib/services/chatService";
 import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
 import {
@@ -23,6 +25,7 @@ import {
   type MemoryType,
 } from "@/lib/services/memoryService";
 import { supabase } from "@/lib/supabase/client";
+import { buildMessageMetadata, buildMessageTrace } from "@/lib/services/chatMetadata";
 
 interface AgentInfo {
   slug: string;
@@ -52,6 +55,27 @@ export default function ChatSlugPage() {
   const [personalMems, setPersonalMems] = useState<string>("");
   const [recentTopics, setRecentTopics] = useState<string>("");
   const [memoriesByType, setMemoriesByType] = useState<Record<string, string>>({});
+
+  const handleRateMessage = useCallback(async (messageId: string, feedback: 1 | -1 | null) => {
+    const updated = await setMessageFeedback(messageId, feedback);
+    if (!updated) return;
+
+    setConversation((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: prev.messages.map((message) =>
+          message.id === updated.id
+            ? {
+                ...message,
+                userFeedback: updated.userFeedback,
+                userFeedbackAt: updated.userFeedbackAt,
+              }
+            : message
+        ),
+      };
+    });
+  }, []);
 
   // Load agent + conversation
   useEffect(() => {
@@ -86,6 +110,9 @@ export default function ChatSlugPage() {
 
         setConversation(conv);
         setLoading(false);
+        
+        // Marquer la conversation comme lue quand la page est chargée
+        markAgentConversationAsRead(agentData.slug);
       } catch {
         router.push("/chat");
       }
@@ -108,6 +135,7 @@ export default function ChatSlugPage() {
             content: string;
             timestamp: number;
             message_type: "normal" | "discovery";
+            metadata?: Conversation["messages"][number]["metadata"];
           };
 
           setConversation((prev) => {
@@ -126,6 +154,7 @@ export default function ChatSlugPage() {
                   content: row.content,
                   timestamp: row.timestamp,
                   messageType: row.message_type ?? "normal",
+                  metadata: row.metadata,
                 },
               ],
             };
@@ -169,6 +198,7 @@ export default function ChatSlugPage() {
       setIsTyping(true);
 
       let reply: string;
+      let replyMetadata = buildMessageMetadata(buildMessageTrace("reply", "fallback"));
       if (isDiscoveryTurn) {
         reply = await generateMemoryInterviewReply(
           {
@@ -182,6 +212,7 @@ export default function ChatSlugPage() {
           content,
           memories
         );
+        replyMetadata = buildMessageMetadata(buildMessageTrace("discovery", "memory_interview"));
       } else {
         const result = await generateAIReply(
           {
@@ -200,8 +231,10 @@ export default function ChatSlugPage() {
           memories,
           personalMems,
           recentTopics,
+          conversation.id,
         );
         reply = result.message;
+        replyMetadata = result.messageMetadata ?? replyMetadata;
       }
 
       // Split multi-bubble messages (|||) and send each as a separate message
@@ -220,9 +253,10 @@ export default function ChatSlugPage() {
           "agent",
           messageType as "normal" | "discovery",
           i > 0, // skipBlockingCheck for follow-up bubbles
-          i === replyParts.length - 1
-            ? { nextNudgeAt, nudgeCount: 0 }
-            : undefined
+          {
+            ...(i === replyParts.length - 1 ? { nextNudgeAt, nudgeCount: 0 } : {}),
+            messageMetadata: replyMetadata,
+          }
         );
         if (agentMsg) {
           setConversation((prev) => {
@@ -376,6 +410,7 @@ export default function ChatSlugPage() {
           agent={agent}
           conversation={conversation}
           onSendMessage={handleSendMessage}
+          onRateMessage={handleRateMessage}
           isTyping={isTyping}
         />
       </div>

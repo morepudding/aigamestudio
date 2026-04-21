@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, buildTimeContext } from "@/lib/prompts/rules";
+import { buildConversationCoreRules } from "@/lib/prompts/conversationCore";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
+import { normalizeConversationMessage } from "@/lib/services/conversationMessageService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -46,21 +48,29 @@ export async function POST(req: NextRequest) {
 
   const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
   const timeBlock = buildTimeContext();
+  const coreRules = buildConversationCoreRules();
 
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
 Background : ${backstory ?? "Tu viens d'être recruté dans l'équipe."}${memoryBlock}${moodBlock}
 
-${studio.full}
+${studio.conversational}
 
 ${timeBlock}
 
+${coreRules}
+
 ${greetingContext}
+
+Le studio est juste le contexte de votre rencontre. N'ouvre pas automatiquement sur le travail, le jeu video ou un projet.
+Ouvre comme une personne normale sur une messagerie : court, simple, humain.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
 - ${emojiRule}
 - Tu tutoies ton boss.
+- 1 a 2 phrases courtes.
+- Pas de pitch, pas de jargon tech, pas de grand monologue.
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${ANTI_HALLUCINATION_RULE}`;
@@ -91,12 +101,15 @@ ${ANTI_HALLUCINATION_RULE}`;
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
   // Filter out non-Latin characters
-  message = message
-    .replace(
-      /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
-      ""
-    )
-    .trim();
+  message = normalizeConversationMessage(
+    message
+      .replace(
+        /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
+        ""
+      )
+      .trim(),
+    { mode: "welcome" }
+  );
 
   return NextResponse.json({ message });
 }

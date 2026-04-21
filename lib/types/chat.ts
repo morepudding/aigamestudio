@@ -1,3 +1,5 @@
+import type { MessageMetadata } from "@/lib/services/chatMetadata";
+
 export type MessageType = "normal" | "discovery" | "moment_vivant";
 
 export interface Message {
@@ -7,6 +9,9 @@ export interface Message {
   content: string;
   timestamp: number;
   messageType: MessageType;
+  metadata?: MessageMetadata;
+  userFeedback?: 1 | -1 | null;
+  userFeedbackAt?: number | null;
 }
 
 export interface Conversation {

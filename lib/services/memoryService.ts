@@ -52,6 +52,12 @@ export interface AgentMemory {
   updated_at: string;
 }
 
+const LEGACY_CRYPTO_PATTERN = /cryptographie\s*101|\bcryptographie\b|\bcrypto\b/i;
+
+function isLegacyCryptoMemory(memory: Pick<AgentMemory, "content">): boolean {
+  return LEGACY_CRYPTO_PATTERN.test(memory.content);
+}
+
 function normaliseMemoryContent(content: string): string {
   return content
     .normalize("NFKC")
@@ -147,11 +153,13 @@ async function requestMemoryConsolidation(
 }
 
 export function buildMemoryContextState(memories: AgentMemory[]): MemoryContextState {
+  const sanitizedMemories = memories.filter((memory) => !isLegacyCryptoMemory(memory));
+
   return {
-    promptMemories: formatMemoriesForPrompt(memories),
-    personalMemories: formatPersonalMemories(memories),
-    recentTopics: formatRecentTopics(memories),
-    memoriesByType: buildMemoriesByType(memories),
+    promptMemories: formatMemoriesForPrompt(sanitizedMemories),
+    personalMemories: formatPersonalMemories(sanitizedMemories),
+    recentTopics: formatRecentTopics(sanitizedMemories),
+    memoriesByType: buildMemoriesByType(sanitizedMemories),
   };
 }
 

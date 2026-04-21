@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Conversation } from "@/lib/types/chat";
 import { MessageBubble, DateSeparator } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { Pin, Clock, Sparkles, Heart } from "lucide-react";
+import { Clock, Sparkles, Heart } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 interface AgentInfo {
@@ -21,6 +21,7 @@ interface ChatConversationProps {
   agent: AgentInfo;
   conversation: Conversation;
   onSendMessage: (content: string) => void | Promise<void>;
+  onRateMessage?: (messageId: string, feedback: 1 | -1 | null) => void | Promise<void>;
   isTyping?: boolean;
 }
 
@@ -74,6 +75,7 @@ export function ChatConversation({
   agent,
   conversation,
   onSendMessage,
+  onRateMessage,
   isTyping = false,
 }: ChatConversationProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -198,6 +200,7 @@ export function ChatConversation({
               agentInitials={initials}
               agentIconUrl={agent.icon_url ?? null}
               gradient={gradient}
+              onRateMessage={onRateMessage}
             />
           );
         })}

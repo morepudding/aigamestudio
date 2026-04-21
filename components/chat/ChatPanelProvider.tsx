@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { getUnreadCount } from "@/lib/services/chatService";
+import { getUnreadCount, markAgentConversationAsRead, markAllConversationsAsRead } from "@/lib/services/chatService";
 import { supabase } from "@/lib/supabase/client";
 
 export interface WaitingAgent {
@@ -10,6 +10,7 @@ export interface WaitingAgent {
   name: string;
   iconUrl: string | null;
   mood: string | null;
+  lastMessage: string | null;
 }
 
 interface ChatPanelContextType {
@@ -65,7 +66,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
     try {
       const { data: convs } = await supabase
         .from("conversations")
-        .select("agent_slug")
+        .select("agent_slug, metadata, last_message_at")
         .eq("awaiting_user_reply", true);
 
       if (!convs?.length) {
@@ -73,24 +74,78 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const slugs = convs.map((c: { agent_slug: string }) => c.agent_slug);
-      const { data: agents } = await supabase
-        .from("agents")
-        .select("slug, name, icon_url, mood")
-        .in("slug", slugs);
+      // Filtrer les conversations non lues (où le dernier message est plus récent que la dernière lecture)
+      const unreadConvs = convs.filter(conv => {
+        const metadata = conv.metadata || {};
+        const lastReadAt = metadata.lastReadAt;
+        
+        // Si jamais lu OU si le dernier message est plus récent que la dernière lecture
+        return !lastReadAt || conv.last_message_at > lastReadAt;
+      });
+
+      if (!unreadConvs.length) {
+        setWaitingAgents([]);
+        return;
+      }
+
+      const slugs = unreadConvs.map((c: { agent_slug: string }) => c.agent_slug);
+
+      // Fetch agents + last agent message in parallel
+      const [agentsRes, msgsRes] = await Promise.all([
+        supabase
+          .from("agents")
+          .select("slug, name, icon_url, mood")
+          .in("slug", slugs),
+        supabase
+          .from("messages")
+          .select("conversation_id, content, conversations!inner(agent_slug)")
+          .eq("sender", "agent")
+          .in("conversations.agent_slug", slugs)
+          .order("timestamp", { ascending: false }),
+      ]);
+
+      // Build last msg map: agentSlug → first (latest) message content
+      const lastMsgMap: Record<string, string> = {};
+      for (const row of (msgsRes.data ?? []) as Array<{ content: string; conversations: { agent_slug: string }[] }>) {
+        const slug = row.conversations?.[0]?.agent_slug;
+        if (slug && !lastMsgMap[slug]) {
+          lastMsgMap[slug] = row.content;
+        }
+      }
 
       setWaitingAgents(
-        (agents ?? []).map((a: { slug: string; name: string; icon_url: string | null; mood: string | null }) => ({
+        (agentsRes.data ?? []).map((a: { slug: string; name: string; icon_url: string | null; mood: string | null }) => ({
           slug: a.slug,
           name: a.name,
           iconUrl: a.icon_url ?? null,
           mood: a.mood ?? null,
+          lastMessage: lastMsgMap[a.slug] ?? null,
         }))
       );
     } catch {
       // ignore
     }
   }, []);
+
+  const refreshUnreadCount = useCallback(async (force = false) => {
+    if (!force && typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+    const count = await getUnreadCount();
+    setUnreadCount(count);
+    const prev = prevUnreadRef.current;
+    if (prev === null) {
+      // Initial load — fetch agents if unread, but no toast
+      if (count > 0) void refreshWaitingAgents();
+    } else if (count > prev && !isOpenRef.current) {
+      // New messages arrived while user is away from chat
+      setNewMessageTick((t) => t + 1);
+      void refreshWaitingAgents();
+    } else if (count === 0) {
+      setWaitingAgents([]);
+    }
+    prevUnreadRef.current = count;
+  }, [refreshWaitingAgents]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,28 +160,6 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
         await fetch("/api/ai/nudge", { method: "POST" });
       } catch {
         // ignore
-      }
-    }
-
-    async function refreshUnreadCount(force = false) {
-      if (!force && typeof document !== "undefined" && document.visibilityState !== "visible") {
-        return;
-      }
-      const count = await getUnreadCount();
-      if (!cancelled) {
-        setUnreadCount(count);
-        const prev = prevUnreadRef.current;
-        if (prev === null) {
-          // Initial load — fetch agents if unread, but no toast
-          if (count > 0) void refreshWaitingAgents();
-        } else if (count > prev && !isOpenRef.current) {
-          // New messages arrived while user is away from chat
-          setNewMessageTick((t) => t + 1);
-          void refreshWaitingAgents();
-        } else if (count === 0) {
-          setWaitingAgents([]);
-        }
-        prevUnreadRef.current = count;
       }
     }
 
@@ -158,19 +191,27 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
       if (interval) clearInterval(interval);
       clearInterval(nudgeInterval);
     };
-  }, [isOpen, pathname, refreshWaitingAgents]);
+  }, [isOpen, pathname, refreshWaitingAgents, refreshUnreadCount]);
 
   const openChat = useCallback((agentSlug: string) => {
     primeChatPanel();
     setActiveAgentSlug(agentSlug);
     setIsOpen(true);
-  }, [primeChatPanel]);
+    // Marquer la conversation comme lue et rafraîchir le compteur
+    markAgentConversationAsRead(agentSlug).then(() => {
+      refreshUnreadCount(true);
+    });
+  }, [primeChatPanel, refreshUnreadCount]);
 
   const openHub = useCallback(() => {
     primeChatPanel();
     setActiveAgentSlug(null);
     setIsOpen(true);
-  }, [primeChatPanel]);
+    // Marquer toutes les conversations comme lues quand on ouvre le hub
+    markAllConversationsAsRead().then(() => {
+      refreshUnreadCount(true);
+    });
+  }, [primeChatPanel, refreshUnreadCount]);
 
   const closeChat = useCallback(() => {
     setIsOpen(false);

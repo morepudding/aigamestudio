@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_RULES, buildTimeContext } from "@/lib/prompts/rules";
+import { buildConversationCoreRules } from "@/lib/prompts/conversationCore";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
+import { getUserSignalLevel, normalizeConversationMessage } from "@/lib/services/conversationMessageService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -49,46 +51,64 @@ export async function POST(req: NextRequest) {
 
   const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
   const timeBlock = buildTimeContext();
+  const userSignalLevel = getUserSignalLevel(userMessage);
+  const coreRules = buildConversationCoreRules({
+    userAskedAboutWork: Boolean(userMessage),
+    allowLightQuestion: true,
+    userSignalLevel,
+  });
 
   const systemPrompt = isReply
     ? `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
 Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
 
-${studio.full}
+${studio.conversational}
 
 ${timeBlock}
 
-Tu fais connaissance avec ton boss de façon décontractée.
+${coreRules}
+
+Tu fais connaissance avec ton boss de façon décontractée et normale.
+Tu ne menes pas un questionnaire. Tu reactes d'abord a ce qu'il dit, puis tu peux ouvrir une petite porte naturelle si c'est fluide.
 
 COMMENT RÉAGIR :
-1. Réagis brièvement au message (quelques mots).
-2. Enchaîne avec UNE question courte et concrète.
+1. Réagis brièvement au message.
+2. Si c'est naturel, enchaîne avec UNE question courte, banale et concrète.
 
-Sois spécifique : "C'est quoi le dernier truc que t'as regardé ?", "Tu bosses mieux le matin ou le soir ?", pas de questions vagues genre "Qu'est-ce qui te motive ?".
+Sois simple : "tu fais quoi là ?", "t'écoutes quoi en ce moment ?", "t'es plus matin ou soir ?".
+Pas de question profonde, pas de formulation qui sent le système, pas de sujet studio par défaut.
+Si le user donne juste un petit signal flou, ne psychologise pas et n'invente pas un imaginaire detaille: reste tres concret.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
 - ${emojiRule}
 - Tu tutoies ton boss.
+- 1 a 2 phrases courtes.
+- Tu parles comme quelqu'un de normal sur une messagerie.
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}${ANTI_HALLUCINATION_RULE}`
     : `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
 Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
 
-${studio.full}
+${studio.conversational}
 
 ${timeBlock}
 
+${coreRules}
+
 ${memories ? "Tu retrouves ton boss pour une session découverte. Ne repose pas de questions dont tu connais déjà la réponse." : "C'est ta première session découverte avec ton boss."}
 
-Lance la conversation avec une accroche courte + une question simple et concrète.
+Lance la conversation avec une accroche courte, naturelle, banale + une question simple et concrète.
 
 RÈGLES :
 - Français uniquement. Pas de caractères non-latins.
 - ${emojiRule}
 - Tu tutoies ton boss.
+- Le studio est juste un decor. N'ouvre pas directement sur le travail ou les projets.
+- 1 a 2 phrases courtes.
+- Pas de question bizarre, profonde ou systemique.
 ${TEXTING_STYLE_RULE}
 ${NO_DIDASCALIE_RULE}
 ${ANTI_HALLUCINATION_RULE}`;
@@ -130,12 +150,15 @@ ${ANTI_HALLUCINATION_RULE}`;
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
   // Filter out non-Latin characters
-  message = message
-    .replace(
-      /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
-      ""
-    )
-    .trim();
+  message = normalizeConversationMessage(
+    message
+      .replace(
+        /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
+        ""
+      )
+      .trim(),
+    { mode: "discovery", userMessage }
+  );
 
   return NextResponse.json({ message });
 }

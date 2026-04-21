@@ -64,6 +64,15 @@ export function ChatHubPageClient({
   const getConvForAgent = (slug: string) =>
     initialConversations.find((conversation) => conversation.agentSlug === slug);
 
+  // Sort: awaiting first
+  const sortedAgents = [...initialAgents].sort((a, b) => {
+    const aWaiting = initialConversations.find((c) => c.agentSlug === a.slug)?.awaitingUserReply ? 1 : 0;
+    const bWaiting = initialConversations.find((c) => c.agentSlug === b.slug)?.awaitingUserReply ? 1 : 0;
+    return bWaiting - aWaiting;
+  });
+
+  const awaitingCount = initialConversations.filter((c) => c.awaitingUserReply).length;
+
   return (
     <div className="h-full overflow-y-auto scrollbar-none">
       <div className="mb-5 md:mb-8">
@@ -75,13 +84,16 @@ export function ChatHubPageClient({
             <h1 className="text-xl md:text-2xl font-bold text-white">Messagerie</h1>
             <p className="text-sm text-muted-foreground/60">
               {initialAgents.length} collaborateur{initialAgents.length > 1 ? "s" : ""} disponible{initialAgents.length > 1 ? "s" : ""}
+              {awaitingCount > 0 && (
+                <span className="ml-2 text-amber-400 font-medium">· {awaitingCount} t'attend{awaitingCount > 1 ? "ent" : ""}</span>
+              )}
             </p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-5">
-        {initialAgents.map((agent) => {
+        {sortedAgents.map((agent) => {
           const gradient = departmentGradients[agent.department] ?? "from-gray-500 to-gray-600";
           const initials = getInitials(agent.name);
           const conv = getConvForAgent(agent.slug);
@@ -93,9 +105,13 @@ export function ChatHubPageClient({
             <button
               key={agent.slug}
               onClick={() => openChat(agent.slug)}
-              className="group rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 overflow-hidden text-left"
+              className={`group rounded-2xl border transition-all duration-300 overflow-hidden text-left ${
+                isAwaiting
+                  ? "border-amber-500/30 bg-amber-500/[0.04] hover:bg-amber-500/[0.07] shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
+                  : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]"
+              }`}
             >
-              <div className={`h-1.5 bg-gradient-to-r ${gradient}`} />
+              <div className={`h-1.5 bg-gradient-to-r ${gradient} ${isAwaiting ? "opacity-100" : "opacity-60"}`} />
 
               <div className="p-4 md:p-5">
                 <div className="flex items-start gap-4 mb-4">
@@ -120,7 +136,11 @@ export function ChatHubPageClient({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <h3 className="text-sm font-semibold text-white truncate">{agent.name}</h3>
-                      {isAwaiting && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />}
+                      {isAwaiting && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[9px] font-bold text-amber-300 flex-shrink-0 animate-pulse">
+                          t'attend
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground/50 truncate mb-1.5">{agent.role}</p>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full bg-gradient-to-r ${gradient} bg-opacity-10 text-[10px] font-medium text-white/80`}>
@@ -131,14 +151,19 @@ export function ChatHubPageClient({
                   <ArrowRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-muted-foreground/50 flex-shrink-0 mt-1" />
                 </div>
 
-                <div className="flex items-center gap-3 px-3.5 py-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                    <MessageCircle className="w-4 h-4 text-blue-400" />
+                <div className={`flex items-center gap-3 px-3.5 py-3 rounded-xl border ${
+                  isAwaiting
+                    ? "border-amber-500/20 bg-amber-500/[0.05]"
+                    : "border-white/[0.06] bg-white/[0.02]"
+                }`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isAwaiting ? "bg-amber-500/15" : "bg-blue-500/10"}`}>
+                    <MessageCircle className={`w-4 h-4 ${isAwaiting ? "text-amber-400" : "text-blue-400"}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     {lastMsg ? (
-                      <p className="text-[11px] text-muted-foreground/50 truncate">
+                      <p className={`text-[11px] truncate ${isAwaiting && lastMsg.sender === "agent" ? "text-amber-200/70" : "text-muted-foreground/50"}`}>
                         {lastMsg.sender === "user" && <span className="text-muted-foreground/30">Vous : </span>}
+                        {lastMsg.sender === "agent" && isAwaiting && <span className="text-amber-400/70">{agent.name} : </span>}
                         {truncate(lastMsg.content, 50)}
                       </p>
                     ) : (

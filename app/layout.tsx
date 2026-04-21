@@ -5,6 +5,7 @@ import { Sidebar, OfficeNavProvider } from "@/components/sidebar";
 import { ChatPanelProvider } from "@/components/chat/ChatPanelProvider";
 import { ChatPanelMount } from "@/components/chat/ChatPanelMount";
 import { ChatBubble } from "@/components/chat/ChatBubble";
+import { MessageToast } from "@/components/chat/MessageToast";
 import { ConditionalLayout } from "@/components/ConditionalLayout";
 
 const geistSans = Geist({
@@ -54,6 +55,7 @@ export default function RootLayout({
           </OfficeNavProvider>
           <ChatPanelMount />
           <ChatBubble />
+          <MessageToast />
         </ChatPanelProvider>
       </body>
     </html>

@@ -2,6 +2,15 @@ import { supabase } from "@/lib/supabase/client";
 import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
 import { Conversation, ConversationSummary, Message, MessageType } from "@/lib/types/chat";
 import { perfLog } from "@/lib/utils/perf";
+import { canSendAgentMessage } from "@/lib/services/conversationGuards";
+import {
+  buildMessageMetadata,
+  buildMessageTrace,
+  mergeAgentTraceIntoConversationMetadata,
+  normalizeConversationMetadata,
+  normalizeMessageMetadata,
+  type MessageMetadata,
+} from "@/lib/services/chatMetadata";
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -75,6 +84,9 @@ type DbMessage = {
   content: string;
   timestamp: number;
   message_type: MessageType;
+  metadata?: MessageMetadata | null;
+  user_feedback?: 1 | -1 | null;
+  user_feedback_at?: number | null;
 };
 
 function toConversation(row: DbConversation, msgs: DbMessage[] = []): Conversation {
@@ -101,6 +113,9 @@ function toMessage(row: DbMessage): Message {
     content: row.content,
     timestamp: row.timestamp,
     messageType: row.message_type ?? "normal",
+    metadata: normalizeMessageMetadata(row.metadata),
+    userFeedback: row.user_feedback ?? null,
+    userFeedbackAt: row.user_feedback_at ?? null,
   };
 }
 
@@ -246,6 +261,7 @@ export async function initConversation(
     content: welcomeContent,
     timestamp: now,
     message_type: "normal",
+    metadata: buildMessageMetadata(buildMessageTrace("welcome", "welcome", { selectedAt: now })),
   };
 
   const { error: msgErr } = await supabase.from("messages").insert(welcomeMsg);
@@ -315,19 +331,27 @@ export async function sendMessage(
   options: {
     nextNudgeAt?: number | null;
     nudgeCount?: number;
+    messageMetadata?: MessageMetadata;
   } = {}
 ): Promise<Message | null> {
   // Fetch current convo to check blocking rule
   const { data: convRow, error: convErr } = await supabase
     .from("conversations")
-    .select("awaiting_user_reply, message_count, nudge_count")
+    .select("awaiting_user_reply, message_count, nudge_count, metadata")
     .eq("id", conversationId)
     .single();
 
   if (convErr || !convRow) return null;
 
-  if (!skipBlockingCheck && sender === "agent" && (convRow as { awaiting_user_reply: boolean }).awaiting_user_reply) {
-    return null;
+  if (!skipBlockingCheck && sender === "agent") {
+    if ((convRow as { awaiting_user_reply: boolean }).awaiting_user_reply) {
+      return null;
+    }
+
+    const allowedToSend = await canSendAgentMessage(supabase, conversationId);
+    if (!allowedToSend) {
+      return null;
+    }
   }
 
   const now = Date.now();
@@ -338,6 +362,7 @@ export async function sendMessage(
     content,
     timestamp: now,
     message_type: messageType,
+    metadata: options.messageMetadata,
   };
 
   const { error: msgErr } = await supabase.from("messages").insert(msg);
@@ -345,6 +370,7 @@ export async function sendMessage(
 
   const currentCount = (convRow as { message_count: number }).message_count ?? 0;
   const currentNudgeCount = (convRow as { nudge_count?: number }).nudge_count ?? 0;
+  const currentMetadata = normalizeConversationMetadata((convRow as { metadata?: unknown }).metadata);
 
   const conversationUpdate = sender === "user"
     ? {
@@ -360,6 +386,9 @@ export async function sendMessage(
         message_count: currentCount,
         nudge_count: options.nudgeCount ?? currentNudgeCount,
         nudge_scheduled_at: options.nextNudgeAt ?? null,
+        metadata: options.messageMetadata?.trace
+          ? mergeAgentTraceIntoConversationMetadata(currentMetadata, options.messageMetadata.trace)
+          : currentMetadata,
       };
 
   await supabase
@@ -368,6 +397,32 @@ export async function sendMessage(
     .eq("id", conversationId);
 
   return toMessage(msg);
+}
+
+export async function setMessageFeedback(
+  messageId: string,
+  feedback: 1 | -1 | null
+): Promise<{ id: string; userFeedback: 1 | -1 | null; userFeedbackAt: number | null } | null> {
+  try {
+    const res = await fetch(`/api/messages/${encodeURIComponent(messageId)}/feedback`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback }),
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const data = await res.json();
+    return {
+      id: data.id,
+      userFeedback: data.userFeedback ?? null,
+      userFeedbackAt: data.userFeedbackAt ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function shouldTriggerDiscovery(messageCount: number, rhythm: number): boolean {
@@ -382,18 +437,32 @@ export async function canAgentSend(conversationId: string): Promise<boolean> {
     .single();
 
   if (error || !data) return false;
-  return !(data as { awaiting_user_reply: boolean }).awaiting_user_reply;
+  if ((data as { awaiting_user_reply: boolean }).awaiting_user_reply) {
+    return false;
+  }
+
+  return canSendAgentMessage(supabase, conversationId);
 }
 
 export async function getUnreadCount(): Promise<number> {
   // Conversations waiting on the user because the last message came from the agent.
-  const { count, error } = await supabase
+  const { data: conversations, error } = await supabase
     .from("conversations")
-    .select("id", { count: "exact", head: true })
+    .select("id, metadata, last_message_at")
     .eq("awaiting_user_reply", true);
 
-  if (error) return 0;
-  return count ?? 0;
+  if (error || !conversations) return 0;
+
+  // Filtrer les conversations où le dernier message est plus récent que la dernière lecture
+  const unreadConversations = conversations.filter(conv => {
+    const metadata = conv.metadata || {};
+    const lastReadAt = metadata.lastReadAt;
+    
+    // Si jamais lu OU si le dernier message est plus récent que la dernière lecture
+    return !lastReadAt || conv.last_message_at > lastReadAt;
+  });
+
+  return unreadConversations.length;
 }
 
 const replyTemplates: Record<string, string[]> = {
@@ -472,8 +541,8 @@ export async function generateAIReply(
   memories?: string,
   personalMemories?: string,
   recentTopics?: string,
-  usedDeckCardIds?: string[],
-): Promise<{ message: string; deckCardIds?: string[]; newConfidenceLevel?: number; unlockedTier?: string }> {
+  conversationId?: string,
+): Promise<{ message: string; newConfidenceLevel?: number; unlockedTier?: string; messageMetadata?: MessageMetadata }> {
   try {
     const res = await fetch("/api/ai/reply", {
       method: "POST",
@@ -487,27 +556,30 @@ export async function generateAIReply(
         memories,
         personalMemories,
         recentTopics,
+        conversationId,
         conversationHistory,
         userMessage,
         mood: agent.mood,
         moodCause: agent.moodCause,
         confidenceLevel: agent.confidenceLevel,
         agentSlug: agent.slug,
-        usedDeckCardIds,
       }),
     });
     if (!res.ok) throw new Error("API error");
     const data = await res.json();
     if (data.message) return {
       message: data.message as string,
-      deckCardIds: data.deckCardIds,
       newConfidenceLevel: data.newConfidenceLevel,
       unlockedTier: data.unlockedTier,
+      messageMetadata: normalizeMessageMetadata(data.messageMetadata),
     };
   } catch {
     // fall through to fallback
   }
-  return { message: getRandomReply(agent.personalityPrimary) };
+  return {
+    message: getRandomReply(agent.personalityPrimary),
+    messageMetadata: buildMessageMetadata(buildMessageTrace("reply", "fallback")),
+  };
 }
 
 // ─── Memory extraction from conversation ─────────────────────────────────────
@@ -555,5 +627,88 @@ export async function consolidateMemories(
     return (data.consolidated ?? []) as { type: string; content: string }[];
   } catch {
     return [];
+  }
+}
+
+export async function markConversationAsRead(conversationId: string): Promise<void> {
+  try {
+    // Récupérer le metadata actuel
+    const { data: current } = await supabase
+      .from("conversations")
+      .select("metadata")
+      .eq("id", conversationId)
+      .single();
+
+    const metadata = normalizeConversationMetadata(current?.metadata);
+    
+    // Mettre à jour le timestamp de dernière lecture
+    await supabase
+      .from("conversations")
+      .update({
+        metadata: {
+          ...metadata,
+          lastReadAt: Date.now()
+        }
+      })
+      .eq("id", conversationId);
+  } catch (error) {
+    console.error("Failed to mark conversation as read:", error);
+  }
+}
+
+export async function markAgentConversationAsRead(agentSlug: string): Promise<void> {
+  try {
+    // Trouver la conversation de l'agent
+    const { data: conversation } = await supabase
+      .from("conversations")
+      .select("id, metadata")
+      .eq("agent_slug", agentSlug)
+      .maybeSingle();
+
+    if (conversation) {
+      const metadata = normalizeConversationMetadata(conversation.metadata);
+      
+      await supabase
+        .from("conversations")
+        .update({
+          metadata: {
+            ...metadata,
+            lastReadAt: Date.now()
+          }
+        })
+        .eq("id", conversation.id);
+    }
+  } catch (error) {
+    console.error("Failed to mark agent conversation as read:", error);
+  }
+}
+
+export async function markAllConversationsAsRead(): Promise<void> {
+  try {
+    // Récupérer toutes les conversations avec awaiting_user_reply = true
+    const { data: conversations } = await supabase
+      .from("conversations")
+      .select("id, metadata")
+      .eq("awaiting_user_reply", true);
+
+    if (!conversations?.length) return;
+
+    // Mettre à jour chaque conversation
+    const updates = conversations.map(conv => {
+      const metadata = normalizeConversationMetadata(conv.metadata);
+      return supabase
+        .from("conversations")
+        .update({
+          metadata: {
+            ...metadata,
+            lastReadAt: Date.now()
+          }
+        })
+        .eq("id", conv.id);
+    });
+
+    await Promise.all(updates);
+  } catch (error) {
+    console.error("Failed to mark all conversations as read:", error);
   }
 }

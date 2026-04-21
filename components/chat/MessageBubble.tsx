@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { Message } from "@/lib/types/chat";
-import { useEffect, useRef } from "react";
-import { Brain, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Brain, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { parseEmotion, joyeuseEmoji } from "@/lib/utils/emotion";
 
 interface MessageBubbleProps {
@@ -12,6 +12,7 @@ interface MessageBubbleProps {
   agentInitials: string;
   agentIconUrl?: string | null;
   gradient: string;
+  onRateMessage?: (messageId: string, feedback: 1 | -1 | null) => Promise<void> | void;
 }
 
 function formatTime(ts: number): string {
@@ -50,12 +51,27 @@ export function MessageBubble({
   agentInitials,
   agentIconUrl,
   gradient,
+  onRateMessage,
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
   const ref = useRef<HTMLDivElement>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const { text, emotion, emotionType } = isUser
     ? { text: message.content, emotion: null, emotionType: null as null }
     : parseEmotion(message.content);
+
+  const currentFeedback = message.userFeedback ?? null;
+
+  const handleFeedback = async (feedback: 1 | -1) => {
+    if (!onRateMessage || isUser || isSubmittingFeedback) return;
+    const nextFeedback = currentFeedback === feedback ? null : feedback;
+    setIsSubmittingFeedback(true);
+    try {
+      await onRateMessage(message.id, nextFeedback);
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
 
   useEffect(() => {
     if (ref.current) {
@@ -151,9 +167,43 @@ export function MessageBubble({
             {emotion}
           </p>
         )}
-        <span className="text-[10px] text-muted-foreground/40 mt-1 px-1">
-          {formatTime(message.timestamp)}
-        </span>
+        <div className={`mt-1 flex items-center gap-2 px-1 ${isUser ? "justify-end" : "justify-start"}`}>
+          <span className="text-[10px] text-muted-foreground/40">
+            {formatTime(message.timestamp)}
+          </span>
+          {!isUser && onRateMessage && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void handleFeedback(1)}
+                disabled={isSubmittingFeedback}
+                className={`rounded-md p-1 transition-colors ${
+                  currentFeedback === 1
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "text-muted-foreground/35 hover:bg-white/5 hover:text-white/60"
+                } disabled:opacity-50`}
+                aria-label="Pouce haut"
+                title="Pouce haut"
+              >
+                <ThumbsUp className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleFeedback(-1)}
+                disabled={isSubmittingFeedback}
+                className={`rounded-md p-1 transition-colors ${
+                  currentFeedback === -1
+                    ? "bg-rose-500/15 text-rose-400"
+                    : "text-muted-foreground/35 hover:bg-white/5 hover:text-white/60"
+                } disabled:opacity-50`}
+                aria-label="Pouce bas"
+                title="Pouce bas"
+              >
+                <ThumbsDown className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

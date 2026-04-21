@@ -14,6 +14,7 @@ import {
   extractMemories,
   shouldTriggerDiscovery,
   getAllConversations,
+  setMessageFeedback,
 } from "@/lib/services/chatService";
 import {
   getAgentMemories,
@@ -27,6 +28,7 @@ import { MoodRing, type Mood } from "@/components/ui/MoodRing";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceGauge";
 import { TierUnlockPopup } from "@/components/ui/TierUnlockPopup";
 import { computeNextNudgeAt } from "@/lib/config/nudgeConfig";
+import { buildMessageMetadata, buildMessageTrace } from "@/lib/services/chatMetadata";
 
 
 interface AgentInfo {
@@ -172,6 +174,7 @@ export function ChatPanel() {
             content: string;
             timestamp: number;
             message_type: "normal" | "discovery";
+            metadata?: Message["metadata"];
           };
 
           setConversation((prev) => {
@@ -190,6 +193,7 @@ export function ChatPanel() {
                   content: row.content,
                   timestamp: row.timestamp,
                   messageType: row.message_type ?? "normal",
+                  metadata: row.metadata,
                 },
               ],
             };
@@ -243,6 +247,7 @@ export function ChatPanel() {
       setIsTyping(true);
 
       let reply: string;
+      let replyMetadata = buildMessageMetadata(buildMessageTrace("reply", "fallback"));
       if (isDiscoveryTurn) {
         reply = await generateMemoryInterviewReply(
           {
@@ -256,6 +261,7 @@ export function ChatPanel() {
           content,
           agentMemories
         );
+        replyMetadata = buildMessageMetadata(buildMessageTrace("discovery", "memory_interview"));
       } else {
         const result = await generateAIReply(
           {
@@ -272,8 +278,10 @@ export function ChatPanel() {
           agentMemories,
           personalMems,
           recentTopics,
+          conversationIdAtSend,
         );
         reply = result.message;
+        replyMetadata = result.messageMetadata ?? replyMetadata;
         if (result.unlockedTier && result.newConfidenceLevel !== undefined) {
           setAgent((prev) => prev ? { ...prev, confidence_level: result.newConfidenceLevel } : prev);
           setTierUnlock({ tierLabel: result.unlockedTier, newLevel: result.newConfidenceLevel });
@@ -298,9 +306,10 @@ export function ChatPanel() {
           "agent",
           messageType as "normal" | "discovery",
           i > 0,
-          i === replyParts.length - 1
-            ? { nextNudgeAt, nudgeCount: 0 }
-            : undefined
+          {
+            ...(i === replyParts.length - 1 ? { nextNudgeAt, nudgeCount: 0 } : {}),
+            messageMetadata: replyMetadata,
+          }
         );
         if (agentMsg) {
           setConversation((prev) => {
@@ -357,6 +366,27 @@ export function ChatPanel() {
     },
     [agent, conversation, agentMemories, memoriesByType, personalMems, recentTopics]
   );
+
+  const handleRateMessage = useCallback(async (messageId: string, feedback: 1 | -1 | null) => {
+    const updated = await setMessageFeedback(messageId, feedback);
+    if (!updated) return;
+
+    setConversation((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: prev.messages.map((message) =>
+          message.id === updated.id
+            ? {
+                ...message,
+                userFeedback: updated.userFeedback,
+                userFeedbackAt: updated.userFeedbackAt,
+              }
+            : message
+        ),
+      };
+    });
+  }, []);
 
 
   // Group messages by date
@@ -491,6 +521,7 @@ export function ChatPanel() {
                     agentInitials={initials}
                     agentIconUrl={agent.icon_url ?? null}
                     gradient={gradient}
+                    onRateMessage={handleRateMessage}
                   />
                 );
               })}
