@@ -50,10 +50,15 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
       const res = await fetch(`/api/pipeline/task/${task.id}/approve`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error("Approval failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Approval failed");
+      }
       onClose();
     } catch (err) {
-      console.error(err);
+      console.error("Approval error:", err);
+      // Show error to user (could integrate with a toast system)
+      alert(`Failed to approve task: ${err.message}`);
     } finally {
       setApproving(false);
     }
@@ -66,11 +71,15 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
       const res = await fetch(`/api/pipeline/task/${task.id}/deliverable`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Delete failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Delete failed");
+      }
       setConfirmDelete(false);
       onClose();
     } catch (err) {
-      console.error(err);
+      console.error("Delete error:", err);
+      alert(`Failed to delete deliverable: ${err.message}`);
     } finally {
       setDeleting(false);
     }
@@ -85,12 +94,16 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ feedback }),
       });
-      if (!res.ok) throw new Error("Rejection failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Rejection failed");
+      }
       setFeedback("");
       setShowFeedback(false);
       onClose();
     } catch (err) {
-      console.error(err);
+      console.error("Rejection error:", err);
+      alert(`Failed to reject task: ${err.message}`);
     } finally {
       setRejecting(false);
     }

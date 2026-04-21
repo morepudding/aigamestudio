@@ -450,6 +450,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
   const [waveReviews, setWaveReviews] = useState<Map<number, WaveReview>>(new Map());
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionInfo, setActionInfo] = useState<string | null>(null);
   const [executionStatuses, setExecutionStatuses] = useState<Map<string, ExecutionStatus>>(
     new Map()
   );
@@ -562,6 +563,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const handleGenerate = async () => {
     setGenerating(true);
     setActionError(null);
+    setActionInfo(null);
     try {
       const res = await fetch(`/api/pipeline/${projectId}/generate`, { method: "POST" });
       if (!res.ok) {
@@ -579,6 +581,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const handleCatchUp = async () => {
     setGenerating(true);
     setActionError(null);
+    setActionInfo(null);
     try {
       const res = await fetch(`/api/pipeline/${projectId}/catch-up`, { method: "POST" });
       if (!res.ok) {
@@ -594,19 +597,52 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   };
 
   const handleAssign = async (taskId: string, slug: string | null) => {
-    await fetch(`/api/pipeline/task/${taskId}/assign`, {
+    setActionError(null);
+    setActionInfo(null);
+
+    const res = await fetch(`/api/pipeline/task/${taskId}/assign`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentSlug: slug }),
     });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? "Impossible d'assigner la tâche");
+    }
+
     await load();
   };
 
   const handleAutoAssign = async () => {
     setAutoAssigning(true);
     setActionError(null);
+    setActionInfo(null);
     try {
-      await fetch(`/api/pipeline/${projectId}/auto-assign`, { method: "POST" });
+      const res = await fetch(`/api/pipeline/${projectId}/auto-assign`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Erreur lors de l'auto-assignation");
+      }
+
+      const assigned = typeof data?.assigned === "number" ? data.assigned : 0;
+      const total = typeof data?.total === "number" ? data.total : assigned;
+
+      if (assigned === 0) {
+        setActionInfo(
+          total > 0
+            ? "Aucune tâche n'a pu être assignée automatiquement pour ce projet."
+            : "Aucune tâche non assignée n'a été trouvée."
+        );
+      } else {
+        setActionInfo(
+          assigned === total
+            ? `${assigned} tâche(s) assignée(s) automatiquement.`
+            : `${assigned} tâche(s) assignée(s), ${total - assigned} ignorée(s).`
+        );
+      }
+
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Erreur lors de l'auto-assignation");
@@ -916,6 +952,13 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
             <div className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-300">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {actionError}
+            </div>
+          )}
+
+          {actionInfo && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {actionInfo}
             </div>
           )}
 

@@ -12,6 +12,7 @@ export interface CodingResult {
   success: boolean;
   filesWritten: string[];
   summary: string;
+  primaryDeliverableContent: string | null;
   tokensUsed: number;
   iterations: number;
 }
@@ -186,6 +187,24 @@ INSTRUCTIONS :
 
 const MAX_ITERATIONS = 20;
 
+function resolvePrimaryDeliverableContent(
+  task: PipelineTask,
+  pendingWrites: Map<string, string>
+): string | null {
+  if (task.deliverablePath) {
+    const deliverableContent = pendingWrites.get(task.deliverablePath);
+    if (deliverableContent !== undefined) {
+      return deliverableContent;
+    }
+  }
+
+  if (pendingWrites.size === 1) {
+    return pendingWrites.values().next().value ?? null;
+  }
+
+  return null;
+}
+
 export async function executeCodeTask(
   task: PipelineTask,
   project: Project,
@@ -293,6 +312,7 @@ export async function executeCodeTask(
               success: true,
               filesWritten: (args.files_written as string[]) ?? [...pendingWrites.keys()],
               summary: args.summary as string,
+              primaryDeliverableContent: resolvePrimaryDeliverableContent(task, pendingWrites),
               tokensUsed: totalTokens,
               iterations: i + 1,
             };
@@ -329,6 +349,7 @@ export async function executeCodeTask(
     success: pendingWrites.size > 0,
     filesWritten: [...pendingWrites.keys()],
     summary: `Agent terminé après ${MAX_ITERATIONS} itérations (limite atteinte)`,
+    primaryDeliverableContent: resolvePrimaryDeliverableContent(task, pendingWrites),
     tokensUsed: totalTokens,
     iterations: MAX_ITERATIONS,
   };

@@ -29,6 +29,7 @@ export async function POST(
     return NextResponse.json({ taskId, status: "retrying", feedback: feedback || null });
   } catch (err) {
     console.error("[pipeline/task/reject] Error:", err);
-    return NextResponse.json({ error: "Failed to reject task" }, { status: 500 });
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to reject task: ${errorMessage}` }, { status: 500 });
   }
 }

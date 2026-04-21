@@ -27,6 +27,7 @@ export async function DELETE(
     return NextResponse.json({ taskId, status: "ready" });
   } catch (err) {
     console.error("[pipeline/task/deliverable] Error:", err);
-    return NextResponse.json({ error: "Failed to delete deliverable" }, { status: 500 });
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to delete deliverable: ${errorMessage}` }, { status: 500 });
   }
 }

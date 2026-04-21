@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProjectById, updateProject } from "@/lib/services/projectService";
 import { getTasksByProject } from "@/lib/services/pipelineService";
-import { enableGithubPages, waitForPagesDeployment } from "@/lib/services/githubService";
+import {
+  enableGithubPages,
+  ensureRepoIsPublic,
+  resolvePagesPreviewUrl,
+  waitForPagesDeployment,
+} from "@/lib/services/githubService";
 import { captureScreenshot, waveScreenshotPath } from "@/lib/services/screenshotService";
 import {
   generateWaveReport,
@@ -65,7 +70,8 @@ export async function POST(
   }
 
   try {
-    // 1. Activer GitHub Pages
+    // 1. Rendre le repo public puis activer GitHub Pages
+    await ensureRepoIsPublic(project.githubRepoName);
     const pagesUrl = await enableGithubPages(project.githubRepoName);
 
     // Sauvegarder l'URL de déploiement sur le projet
@@ -90,24 +96,40 @@ export async function POST(
       );
     }
 
-    // 4. Screenshot
-    const storagePath = waveScreenshotPath(projectId, waveNumber);
-    const screenshotUrl = await captureScreenshot(pagesUrl, storagePath);
+    const preview = await resolvePagesPreviewUrl(pagesUrl);
+    const hasPlayablePreview = preview.kind === "playable";
+    const previewUrl = hasPlayablePreview ? preview.url : null;
+
+    let screenshotUrl: string | null = null;
+    let screenshotTakenAt: string | null = null;
+
+    if (previewUrl) {
+      const storagePath = waveScreenshotPath(projectId, waveNumber);
+      screenshotUrl = await captureScreenshot(previewUrl, storagePath);
+      screenshotTakenAt = new Date().toISOString();
+    }
 
     // 5. Rapport LLM
-    const reportMarkdown = await generateWaveReport(project, waveNumber, waveTasks, pagesUrl);
+    const reportMarkdown = await generateWaveReport(project, waveNumber, waveTasks, previewUrl);
 
     // 6. Persister
     const review = await upsertWaveReview(projectId, waveNumber, {
-      pagesUrl,
+      pagesUrl: previewUrl,
       screenshotUrl,
-      screenshotTakenAt: new Date().toISOString(),
+      screenshotTakenAt,
       reportMarkdown,
       reportGeneratedAt: new Date().toISOString(),
       status: "pending",
     });
 
-    return NextResponse.json({ review }, { status: 201 });
+    const warning = hasPlayablePreview
+      ? null
+      : "Aucun build jouable n'est encore publié pour cette wave. Le checkpoint a généré un rapport sans screenshot.";
+
+    return NextResponse.json(
+      warning ? { review, warning } : { review },
+      { status: warning ? 202 : 201 }
+    );
   } catch (err) {
     console.error("[wave-review/POST] Error:", err);
     return NextResponse.json(

@@ -198,8 +198,15 @@ function buildReportPrompt(
   project: Project,
   waveNumber: number,
   waveTasks: PipelineTask[],
-  pagesUrl: string
+  pagesUrl: string | null
 ): string {
+  const previewLabel = pagesUrl
+    ? `URL de prévisualisation : ${pagesUrl}`
+    : "Prévisualisation jouable : non disponible pour cette wave";
+  const previewInstructions = pagesUrl
+    ? `Ce que le directeur devrait voir à l'URL ${pagesUrl} — décris ce qui est jouable/visible à ce stade.`
+    : "Indique explicitement qu'aucun build jouable n'est encore publié pour cette wave et décris à la place les livrables techniques/fonctionnels déjà prêts.";
+
   const tasksSummary = waveTasks
     .map(
       (t) =>
@@ -213,7 +220,7 @@ Tu dois rédiger un rapport de fin de wave pour que le directeur du studio puiss
 Projet : "${project.title}"
 Description : ${project.description}
 Wave : ${waveNumber}
-URL de prévisualisation : ${pagesUrl}
+${previewLabel}
 
 Tâches réalisées dans cette wave :
 ${tasksSummary}
@@ -229,7 +236,7 @@ Rédige un rapport de wave concis en Markdown avec cette structure exacte :
 Liste des fichiers produits et leur rôle dans le jeu.
 
 ### État de la prévisualisation
-Ce que le directeur devrait voir à l'URL ${pagesUrl} — décris ce qui est jouable/visible à ce stade.
+${previewInstructions}
 
 ### Points d'attention
 Éléments potentiellement à corriger ou à surveiller avant la prochaine wave (bugs connus, décisions arbitraires, manques).
@@ -252,7 +259,7 @@ export async function generateWaveReport(
   project: Project,
   waveNumber: number,
   waveTasks: PipelineTask[],
-  pagesUrl: string
+  pagesUrl: string | null
 ): Promise<string> {
   const prompt = buildReportPrompt(project, waveNumber, waveTasks, pagesUrl);
 

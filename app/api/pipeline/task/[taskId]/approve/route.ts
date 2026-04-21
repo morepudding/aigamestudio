@@ -31,8 +31,14 @@ export async function POST(
 
     const project = await getProjectById(task.projectId);
 
-    // Push deliverable to GitHub if the task required review (execute skips this for review tasks)
-    if (task.deliverablePath && task.deliverableContent && project?.githubRepoName) {
+    // Review-approved concept tasks still need a single-file push here.
+    // In-dev tasks manage repository writes during execution already.
+    if (
+      task.projectPhase !== "in-dev" &&
+      task.deliverablePath &&
+      task.deliverableContent &&
+      project?.githubRepoName
+    ) {
       const commitMessage = `[eden] ${task.assignedAgentSlug ?? "agent"}: ${task.title}`;
       await pushFile(project.githubRepoName, task.deliverablePath, task.deliverableContent, commitMessage);
     }
@@ -66,6 +72,7 @@ export async function POST(
     return NextResponse.json({ taskId, status: "completed" });
   } catch (err) {
     console.error("[pipeline/task/approve] Error:", err);
-    return NextResponse.json({ error: "Failed to approve task" }, { status: 500 });
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to approve task: ${errorMessage}` }, { status: 500 });
   }
 }

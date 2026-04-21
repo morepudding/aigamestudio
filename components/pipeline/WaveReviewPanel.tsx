@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Camera,
   CheckCircle2,
@@ -13,6 +15,12 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import type { WaveReview } from "@/lib/services/waveReviewService";
+
+function normalizeReportMarkdown(markdown: string): string {
+  const trimmed = markdown.trim();
+  const fencedMatch = trimmed.match(/^```(?:markdown)?\s*\n([\s\S]*?)\n```$/i);
+  return fencedMatch ? fencedMatch[1].trim() : trimmed;
+}
 
 interface WaveReviewPanelProps {
   projectId: string;
@@ -172,6 +180,7 @@ export default function WaveReviewPanel({
     : "bg-amber-500/15";
 
   const statusLabel = isApproved ? "Approuvée" : isRejected ? "Rejetée" : "En attente de décision";
+  const hasReportOnlyReview = isPending && !review.screenshotUrl && !!review.reportMarkdown;
 
   return (
     <div className={`my-4 rounded-2xl border p-5 space-y-4 ${borderClass}`}>
@@ -224,12 +233,20 @@ export default function WaveReviewPanel({
         </div>
       )}
 
+      {hasReportOnlyReview && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-xs text-amber-200">
+          Aucun build jouable n&apos;est encore publié pour cette wave. La validation peut quand même se faire sur le rapport et les livrables.
+        </div>
+      )}
+
       {/* Rapport */}
       {review.reportMarkdown && (
         <div className="rounded-xl border border-white/8 bg-white/2 p-4">
-          <pre className="text-xs text-white/60 whitespace-pre-wrap leading-relaxed font-mono">
-            {review.reportMarkdown}
-          </pre>
+          <div className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-white/70 prose-strong:text-white prose-li:text-white/70 prose-code:text-amber-300 prose-pre:bg-black/30 prose-pre:text-white/80">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {normalizeReportMarkdown(review.reportMarkdown)}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
 
@@ -250,7 +267,7 @@ export default function WaveReviewPanel({
       )}
 
       {/* Actions — uniquement si pending */}
-      {isPending && review.screenshotUrl && (
+      {isPending && (review.screenshotUrl || review.reportMarkdown) && (
         <div className="space-y-3">
           {/* Formulaire de rejet */}
           {showRejectForm && (

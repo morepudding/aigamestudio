@@ -23,7 +23,13 @@ export interface StudioContext {
   projects: string;
   team: string;
   conventions: string;
+  conversational: string;
   full: string;
+}
+
+function isLegacyCryptoProject(project: { title: string; description: string }): boolean {
+  const haystack = `${project.title} ${project.description}`;
+  return /cryptographie\s*101|\bcryptographie\b|\bcrypto\b/i.test(haystack);
 }
 
 /**
@@ -40,7 +46,7 @@ export async function buildStudioContext(): Promise<StudioContext> {
   ]);
 
   const activeProjects = projects.filter(
-    (p) => p.active || p.status === "concept" || p.status === "in-dev"
+    (p) => (p.active || p.status === "concept" || p.status === "in-dev") && !isLegacyCryptoProject(p)
   );
   const activeAgents = agents.filter(
     (a) => a.status === "actif" || a.status === "active" || a.status === "onboarding" || a.status === "recruté"
@@ -80,7 +86,12 @@ ${teamBlock}${conventionsBlock}
 
 ⚠️ Si une information sur le studio n'est pas listée ci-dessus, tu ne la connais pas. Pose une question plutôt qu'inventer.`;
 
-  return { projects: projectsBlock, team: teamBlock, conventions, full };
+  const conversational = `CADRE PRO MINIMAL :
+Eve dirige le studio. Romain est ton boss direct.
+Vous vous connaissez via le studio, mais le travail n'est pas le sujet par defaut.
+Si un detail pro n'est pas explicitement connu, ne l'invente pas.`;
+
+  return { projects: projectsBlock, team: teamBlock, conventions, conversational, full };
 }
 
 /**

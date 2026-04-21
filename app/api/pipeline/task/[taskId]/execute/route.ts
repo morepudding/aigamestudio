@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTaskById, updateTaskStatus, createExecution, advancePipeline, getTaskExecutions } from "@/lib/services/pipelineService";
 import { executeConceptTask, enrichNextTaskPrompt } from "@/lib/services/producerService";
 import { executeCodeTask } from "@/lib/services/codingAgentService";
-import { getFileContent } from "@/lib/services/githubService";
+import { getFileContent, getRepositorySnapshot } from "@/lib/services/githubService";
 import { getProjectById } from "@/lib/services/projectService";
 import { pushFile } from "@/lib/services/githubService";
 import { normalizeMarkdownDeliverable, unwrapCodeFence } from "@/lib/utils";
@@ -10,6 +10,63 @@ import { getSessionByProject } from "@/lib/services/brainstormingService";
 import { reviewWave, isWaveFullyCompleted } from "@/lib/services/waveReviewerService";
 import { getTasksByProject } from "@/lib/services/pipelineService";
 import { getActiveSkillPrompt } from "@/lib/services/agentSkillPromptService";
+import type { PipelineTask } from "@/lib/types/task";
+
+async function buildCodeTaskContext(task: PipelineTask, repoName: string) {
+  const seenPaths = new Set<string>();
+  const contextFiles: { path: string; content: string }[] = [];
+
+  const dependencyTasks = await Promise.all(task.dependsOn.map((depId) => getTaskById(depId)));
+
+  for (const dependencyTask of dependencyTasks) {
+    if (!dependencyTask?.deliverablePath || seenPaths.has(dependencyTask.deliverablePath)) {
+      continue;
+    }
+
+    const repoContent = await getFileContent(repoName, dependencyTask.deliverablePath);
+    const content =
+      dependencyTask.deliverableType === "markdown"
+        ? dependencyTask.deliverableContent ?? repoContent
+        : repoContent ?? dependencyTask.deliverableContent;
+
+    if (!content) {
+      continue;
+    }
+
+    seenPaths.add(dependencyTask.deliverablePath);
+    contextFiles.push({ path: dependencyTask.deliverablePath, content });
+  }
+
+  for (const filePath of task.llmContextFiles) {
+    if (!filePath || seenPaths.has(filePath)) {
+      continue;
+    }
+
+    const content = await getFileContent(repoName, filePath);
+    if (!content) {
+      continue;
+    }
+
+    seenPaths.add(filePath);
+    contextFiles.push({ path: filePath, content });
+  }
+
+  const snapshotFiles = await getRepositorySnapshot(repoName, {
+    maxFiles: 10,
+    maxFileChars: 3000,
+  });
+
+  for (const snapshotFile of snapshotFiles) {
+    if (seenPaths.has(snapshotFile.path)) {
+      continue;
+    }
+
+    seenPaths.add(snapshotFile.path);
+    contextFiles.push(snapshotFile);
+  }
+
+  return contextFiles;
+}
 
 // POST /api/pipeline/task/[taskId]/execute
 // Executes a task: calls DeepSeek, saves content to DB.
@@ -65,24 +122,25 @@ export async function POST(
     if (task.projectPhase === "in-dev") {
       // Load concept docs from GitHub for full context
       const repoName = project.githubRepoName ?? "";
-      const [gdd, techSpec, dataArch, activeSkillPrompt] = await Promise.all([
+      const [gdd, techSpec, dataArch, activeSkillPrompt, contextFiles] = await Promise.all([
         repoName ? getFileContent(repoName, "docs/gdd.md") : null,
         repoName ? getFileContent(repoName, "docs/tech-spec.md") : null,
         repoName ? getFileContent(repoName, "docs/data-arch.md") : null,
         task.assignedAgentSlug ? getActiveSkillPrompt(task.assignedAgentSlug) : null,
+        repoName ? buildCodeTaskContext(task, repoName) : Promise.resolve([]),
       ]);
 
       const codingResult = await executeCodeTask(
         task,
         project,
         { gdd, techSpec, dataArch },
-        [],
+        contextFiles,
         activeSkillPrompt?.content ?? null
       );
 
       // Produced a structured result — map to the common shape
       result = {
-        content: codingResult.summary,
+        content: codingResult.primaryDeliverableContent ?? codingResult.summary,
         tokensUsed: codingResult.tokensUsed,
       };
     } else {
@@ -118,8 +176,14 @@ export async function POST(
       completedAt: nextStatus === "completed" ? new Date().toISOString() : undefined,
     });
 
-    // Push to GitHub if completed and has a deliverable path
-    if (nextStatus === "completed" && task.deliverablePath && project.githubRepoName) {
+    // Concept tasks produce a single deliverable file here.
+    // In-dev tasks already commit their real files inside executeCodeTask.
+    if (
+      nextStatus === "completed" &&
+      task.projectPhase !== "in-dev" &&
+      task.deliverablePath &&
+      project.githubRepoName
+    ) {
       const commitMessage = `[eden] ${task.assignedAgentSlug ?? "agent"}: ${task.title}`;
       await pushFile(project.githubRepoName, task.deliverablePath, llmOutput, commitMessage);
     }

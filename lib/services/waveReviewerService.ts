@@ -110,9 +110,11 @@ export async function reviewWave(
   for (const task of waveTasks) {
     if (!task.deliverablePath) continue;
 
+    const repoContent = repoName ? await getFileContent(repoName, task.deliverablePath) : null;
     const content =
-      task.deliverableContent ??
-      (repoName ? await getFileContent(repoName, task.deliverablePath) : null);
+      task.deliverableType === "markdown"
+        ? task.deliverableContent ?? repoContent
+        : repoContent ?? task.deliverableContent;
 
     if (content) {
       fileContents.push({ path: task.deliverablePath, content });

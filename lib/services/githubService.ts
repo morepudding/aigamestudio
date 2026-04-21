@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import { normalizeRepoPath } from "@/lib/utils";
 
 const GITHUB_OWNER = "morepudding";
 
@@ -124,7 +125,7 @@ export async function deleteRepo(name: string): Promise<void> {
 }
 
 /**
- * Create a new private GitHub repository under the owner account.
+ * Create a new public GitHub repository under the owner account.
  * Idempotent: if the repo already exists, returns its info instead of throwing.
  */
 export async function createRepo(
@@ -137,7 +138,7 @@ export async function createRepo(
     const { data } = await octokit.repos.createForAuthenticatedUser({
       name,
       description,
-      private: true,
+      private: false,
       auto_init: true,
     });
     return { url: data.html_url, fullName: data.full_name };
@@ -154,6 +155,20 @@ export async function createRepo(
     }
     throw err;
   }
+}
+
+/**
+ * Force a repository to be public so GitHub Pages can be enabled on plans
+ * that do not support private Pages sites.
+ */
+export async function ensureRepoIsPublic(repoName: string): Promise<void> {
+  const octokit = getOctokit();
+
+  await octokit.repos.update({
+    owner: GITHUB_OWNER,
+    repo: repoName,
+    private: false,
+  });
 }
 
 /**
@@ -313,8 +328,7 @@ export async function pushFile(
 ): Promise<void> {
   const octokit = getOctokit();
 
-  // GitHub rejects paths starting with "./" or ending with a slash
-  path = path.replace(/^\.\//, "").replace(/\/+$/, "");
+  path = normalizeRepoPath(path);
   if (!path) throw new Error("pushFile: path cannot be empty");
 
   // Check if file already exists to get its SHA (required for updates)
@@ -325,10 +339,16 @@ export async function pushFile(
       repo: repoName,
       path,
     });
+    if (Array.isArray(data)) {
+      throw new Error(`pushFile: path resolves to a directory, not a file: ${path}`);
+    }
     if (!Array.isArray(data) && data.type === "file") {
       existingSha = data.sha;
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("pushFile:")) {
+      throw error;
+    }
     // File does not exist — will be created
   }
 
@@ -351,6 +371,11 @@ export async function getFileContent(
   path: string
 ): Promise<string | null> {
   const octokit = getOctokit();
+  path = normalizeRepoPath(path);
+
+  if (!path) {
+    return null;
+  }
 
   try {
     const { data } = await octokit.repos.getContent({
@@ -382,6 +407,7 @@ export async function listFiles(
   path: string = ""
 ): Promise<string[]> {
   const octokit = getOctokit();
+  path = normalizeRepoPath(path);
 
   try {
     const { data } = await octokit.repos.getContent({
@@ -456,6 +482,68 @@ export async function waitForPagesDeployment(
   }
 
   return { ready: false, url: pagesUrl };
+}
+
+function isMarkdownPagesHtml(html: string): boolean {
+  return /class=["'][^"']*markdown-body[^"']*["']/.test(html) ||
+    /<meta name="generator" content="Jekyll/i.test(html);
+}
+
+function looksPlayableHtml(html: string): boolean {
+  return /<canvas\b/i.test(html) ||
+    /phaser/i.test(html) ||
+    /godot/i.test(html) ||
+    /pixi/i.test(html) ||
+    /unity[- ]loader/i.test(html) ||
+    /<iframe\b/i.test(html) ||
+    /<script\b/i.test(html);
+}
+
+/**
+ * Resolve the most likely playable preview URL exposed by GitHub Pages.
+ * Falls back to common build subpaths and detects when the root site is only
+ * the Jekyll-rendered repository README.
+ */
+export async function resolvePagesPreviewUrl(
+  pagesUrl: string
+): Promise<{ url: string; kind: "playable" | "readme" | "unknown" }> {
+  const candidates = ["", "index.html", "dist/", "dist/index.html", "build/", "build/index.html", "web/", "web/index.html"];
+
+  let sawReadme = false;
+
+  for (const candidate of candidates) {
+    const targetUrl = new URL(candidate, pagesUrl).toString();
+
+    try {
+      const res = await fetch(targetUrl, { method: "GET" });
+      if (!res.ok) {
+        continue;
+      }
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/html")) {
+        return { url: targetUrl, kind: "playable" };
+      }
+
+      const html = await res.text();
+      if (isMarkdownPagesHtml(html)) {
+        if (candidate === "") {
+          sawReadme = true;
+        }
+        continue;
+      }
+
+      if (looksPlayableHtml(html) || candidate !== "") {
+        return { url: targetUrl, kind: "playable" };
+      }
+
+      return { url: targetUrl, kind: "unknown" };
+    } catch {
+      continue;
+    }
+  }
+
+  return { url: pagesUrl, kind: sawReadme ? "readme" : "unknown" };
 }
 
 function scoreSnapshotPath(path: string): number {
