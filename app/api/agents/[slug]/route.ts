@@ -31,7 +31,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt", "personality_bio", "gender", "position", "specialization"] as const;
+  const allowedFields = ["status", "assigned_project", "portrait_url", "icon_url", "mood", "mood_cause", "mood_updated_at", "confidence_level", "appearance_prompt", "personality_bio", "gender", "position", "specialization", "lpc_hair_style", "lpc_hair_color"] as const;
 
   const updates: Record<string, unknown> = {};
   for (const key of allowedFields) {

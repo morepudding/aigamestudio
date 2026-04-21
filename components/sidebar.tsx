@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, GraduationCap, Users, MessageCircle, Settings2, Heart, Sparkles, Bot, X } from "lucide-react";
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState } from "react";
 import { useChatPanel } from "@/components/chat/ChatPanelProvider";
-import { supabase } from "@/lib/supabase/client";
 
 // ── Office nav overlay context ────────────────────────────────────────────────
 interface OfficeNavContextValue {
@@ -32,14 +31,6 @@ export function OfficeNavProvider({ children }: { children: React.ReactNode }) {
       {children}
     </OfficeNavContext.Provider>
   );
-}
-
-interface EmotionalNotification {
-  count: number;
-  hint: string | null;
-  mood: string | null;
-  agentName: string | null;
-  intensity: "low" | "medium" | "high";
 }
 
 const moodHints: Record<string, { hint: string; intensity: "low" | "medium" | "high" }> = {
@@ -77,103 +68,21 @@ export function Sidebar() {
   const isOffice = pathname === "/";
   const isChatRoute = pathname.startsWith("/chat");
   const officeNav = useOfficeNav();
-  const { unreadCount } = useChatPanel();
-  const [notification, setNotification] = useState<EmotionalNotification>({
-    count: 0,
-    hint: null,
-    mood: null,
-    agentName: null,
-    intensity: "low",
-  });
+  const { unreadCount, waitingAgents } = useChatPanel();
 
-  const fetchEmotionalNotification = useCallback(async () => {
-    if (unreadCount === 0) {
-      setNotification({ count: 0, hint: null, mood: null, agentName: null, intensity: "low" });
-      return;
+  // Compute intensity from waiting agents moods
+  const intensity = (() => {
+    if (!waitingAgents.length) return "low" as const;
+    const order = { low: 0, medium: 1, high: 2 } as const;
+    let best: "low" | "medium" | "high" = "low";
+    for (const a of waitingAgents) {
+      const i = (moodHints[a.mood ?? "neutre"] ?? moodHints.neutre).intensity;
+      if (order[i] > order[best]) best = i;
     }
+    return best;
+  })();
 
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-      return;
-    }
-
-    try {
-      const { data: convs, error: convErr } = await supabase
-        .from("conversations")
-        .select("agent_slug")
-        .eq("awaiting_user_reply", true);
-
-      if (convErr || !convs || convs.length === 0) {
-        setNotification({ count: 0, hint: null, mood: null, agentName: null, intensity: "low" });
-        return;
-      }
-
-      const slugs = convs.map((c) => c.agent_slug);
-
-      // Get agents with their moods
-      const { data: agents, error: agentErr } = await supabase
-        .from("agents")
-        .select("slug, name, mood")
-        .in("slug", slugs);
-
-      if (agentErr || !agents || agents.length === 0) {
-        setNotification({ count: unreadCount, hint: null, mood: null, agentName: null, intensity: "low" });
-        return;
-      }
-
-      // Pick the most "intense" mood for the hint
-      let bestAgent = agents[0];
-      let bestIntensity: "low" | "medium" | "high" = "low";
-
-      for (const agent of agents) {
-        const moodInfo = moodHints[agent.mood ?? "neutre"] ?? moodHints.neutre;
-        const intensityOrder = { low: 0, medium: 1, high: 2 };
-        if (intensityOrder[moodInfo.intensity] > intensityOrder[bestIntensity]) {
-          bestAgent = agent;
-          bestIntensity = moodInfo.intensity;
-        }
-      }
-
-      const moodInfo = moodHints[bestAgent.mood ?? "neutre"] ?? moodHints.neutre;
-
-      setNotification({
-        count: unreadCount,
-        hint: moodInfo.hint,
-        mood: bestAgent.mood,
-        agentName: bestAgent.name,
-        intensity: moodInfo.intensity,
-      });
-    } catch {
-      setNotification({ count: 0, hint: null, mood: null, agentName: null, intensity: "low" });
-    }
-  }, [unreadCount]);
-
-  useEffect(() => {
-    if (unreadCount === 0 || isChatRoute) {
-      setNotification({ count: 0, hint: null, mood: null, agentName: null, intensity: "low" });
-      return;
-    }
-
-    void fetchEmotionalNotification();
-
-    const handleVisibility = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        void fetchEmotionalNotification();
-      }
-    };
-
-    window.addEventListener("focus", handleVisibility);
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    const interval = setInterval(() => {
-      void fetchEmotionalNotification();
-    }, 20000);
-
-    return () => {
-      window.removeEventListener("focus", handleVisibility);
-      document.removeEventListener("visibilitychange", handleVisibility);
-      clearInterval(interval);
-    };
-  }, [fetchEmotionalNotification, isChatRoute, unreadCount]);
+  const hasNotif = unreadCount > 0 && !isChatRoute;
 
   // On the office page, sidebar is an overlay panel controlled by OfficeNavContext
   if (isOffice) {
@@ -217,7 +126,7 @@ export function Sidebar() {
             {navLinks.map((link) => {
               const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));
               const Icon = link.icon;
-              const isChatWithNotif = link.href === "/chat" && notification.count > 0;
+              const isChatWithNotif = link.href === "/chat" && hasNotif;
               return (
                 <Link
                   key={link.href}
@@ -232,19 +141,19 @@ export function Sidebar() {
                   <span className="relative z-10 flex-1">{link.label}</span>
                   {isChatWithNotif && (
                     <div className="relative z-10 flex items-center gap-1.5">
-                      {notification.intensity === "high" ? (
+                      {intensity === "high" ? (
                         <Heart className="w-3.5 h-3.5 text-rose-400 animate-heartbeat" />
-                      ) : notification.intensity === "medium" ? (
+                      ) : intensity === "medium" ? (
                         <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                       ) : null}
                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full min-w-5.5 text-center shadow-lg animate-in zoom-in duration-300 ${
-                        notification.intensity === "high"
+                        intensity === "high"
                           ? "bg-rose-500/20 text-rose-300 shadow-rose-500/20 border border-rose-500/30"
-                          : notification.intensity === "medium"
+                          : intensity === "medium"
                           ? "bg-amber-500/20 text-amber-300 shadow-amber-500/20 border border-amber-500/30"
                           : "bg-primary text-primary-foreground shadow-primary/20"
                       }`}>
-                        {notification.count}
+                        {unreadCount}
                       </span>
                     </div>
                   )}
@@ -290,7 +199,7 @@ export function Sidebar() {
           {navLinks.map((link) => {
             const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
             const Icon = link.icon;
-            const isChatWithNotif = link.href === "/chat" && notification.count > 0;
+            const isChatWithNotif = link.href === "/chat" && hasNotif;
 
             return (
               <div key={link.href}>
@@ -309,21 +218,21 @@ export function Sidebar() {
                   <span className="relative z-10 flex-1">{link.label}</span>
                   {isChatWithNotif && (
                     <div className="relative z-10 flex items-center gap-1.5">
-                      {notification.intensity === "high" ? (
+                      {intensity === "high" ? (
                         <Heart className="w-3.5 h-3.5 text-rose-400 animate-heartbeat" />
-                      ) : notification.intensity === "medium" ? (
+                      ) : intensity === "medium" ? (
                         <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                       ) : null}
                       <span
                         className={`text-xs font-bold px-2 py-0.5 rounded-full min-w-5.5 text-center shadow-lg animate-in zoom-in duration-300 ${
-                          notification.intensity === "high"
+                          intensity === "high"
                             ? "bg-rose-500/20 text-rose-300 shadow-rose-500/20 border border-rose-500/30"
-                            : notification.intensity === "medium"
+                            : intensity === "medium"
                               ? "bg-amber-500/20 text-amber-300 shadow-amber-500/20 border border-amber-500/30"
                               : "bg-primary text-primary-foreground shadow-primary/20"
                         }`}
                       >
-                        {notification.count}
+                        {unreadCount}
                       </span>
                     </div>
                   )}
@@ -353,7 +262,7 @@ export function Sidebar() {
           {mobileNavLinks.map((link) => {
             const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
             const Icon = link.icon;
-            const isChatWithNotif = link.href === "/chat" && notification.count > 0;
+            const isChatWithNotif = link.href === "/chat" && hasNotif;
 
             return (
               <Link
@@ -370,14 +279,14 @@ export function Sidebar() {
                   {isChatWithNotif && (
                     <span
                       className={`absolute -top-1.5 -right-2.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-4 text-center leading-none ${
-                        notification.intensity === "high"
+                        intensity === "high"
                           ? "bg-rose-500 text-white"
-                          : notification.intensity === "medium"
+                          : intensity === "medium"
                             ? "bg-amber-500 text-white"
                             : "bg-primary text-primary-foreground"
                       }`}
                     >
-                      {notification.count}
+                      {unreadCount}
                     </span>
                   )}
                 </div>

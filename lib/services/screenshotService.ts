@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { existsSync } from "node:fs";
 
 // ============================================================
 // Screenshot service
@@ -7,6 +8,12 @@ import { createClient } from "@supabase/supabase-js";
 // ============================================================
 
 const BUCKET = "wave-screenshots";
+const LOCAL_BROWSER_CANDIDATES = [
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+];
 
 function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -14,6 +21,33 @@ function getSupabaseAdmin() {
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createClient(url, key);
+}
+
+async function resolveBrowserExecutablePath(
+  chromium: typeof import("@sparticuz/chromium").default
+): Promise<string> {
+  if (process.platform === "win32") {
+    const localPath = LOCAL_BROWSER_CANDIDATES.find((candidate) => existsSync(candidate));
+    if (localPath) {
+      return localPath;
+    }
+  }
+
+  try {
+    const bundledPath = await chromium.executablePath();
+    if (bundledPath && existsSync(bundledPath)) {
+      return bundledPath;
+    }
+  } catch {
+    // Fallback to a locally installed browser below.
+  }
+
+  const localPath = LOCAL_BROWSER_CANDIDATES.find((candidate) => existsSync(candidate));
+  if (localPath) {
+    return localPath;
+  }
+
+  throw new Error("No browser executable found for screenshots");
 }
 
 /**
@@ -30,9 +64,10 @@ export async function captureScreenshot(
   const chromium = (await import("@sparticuz/chromium")).default;
   const { chromium: playwrightChromium } = await import("playwright-core");
 
+  const executablePath = await resolveBrowserExecutablePath(chromium);
   const browser = await playwrightChromium.launch({
     args: chromium.args,
-    executablePath: await chromium.executablePath(),
+    executablePath,
     headless: true,
   });
 

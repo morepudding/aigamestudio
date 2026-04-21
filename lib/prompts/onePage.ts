@@ -1,6 +1,7 @@
 import type { Agent } from "@/lib/services/agentService";
 import type { Project } from "@/lib/types/project";
 import type { GameBrief, OnePageComments } from "@/lib/types/brainstorming";
+import { buildSimpleGameConstraintsPrompt } from "@/lib/config/gameConstraints";
 
 const GENRE_LABELS: Record<string, string> = {
   action: "Action",
@@ -73,9 +74,13 @@ export function buildOnePageGeneratePrompt(
     : "";
 
   if (!isRegeneration) {
+    const constraintsPrompt = buildSimpleGameConstraintsPrompt();
+    
     return `Tu es ${agent.name}, ${agent.role} chez Eden Studio.${agentProPrompt}
 
 ${studioContext}
+
+${constraintsPrompt}
 
 Le directeur vient de remplir le brief suivant :
 ${briefBlock}
@@ -86,6 +91,8 @@ Sois direct, professionnel, sans fioritures. Chaque ligne doit avoir un vrai con
 Si tu détectes une incohérence (ex: genre trop long pour la durée, mécanique incompatible avec l'univers), note-le dans "Risques identifiés" — n'invente pas pour masquer le problème.
 Respecte les contraintes absolues du studio listées dans le contexte ci-dessus.
 
+**IMPORTANT** : Vérifie que ton design respecte TOUTES les contraintes pour jeux simples ci-dessus. Si une section du template suggère plus de complexité, adapte-la pour rester simple.
+
 Template à remplir :
 ${ONE_PAGE_TEMPLATE}`;
   }
@@ -94,11 +101,17 @@ ${ONE_PAGE_TEMPLATE}`;
     .map(([section, comment]) => `- **${section}** : ${comment}`)
     .join("\n");
 
+  const constraintsPrompt = buildSimpleGameConstraintsPrompt();
+
   return `Tu es ${agent.name}, ${agent.role} chez Eden Studio.${agentProPrompt}
 
 ${studioContext}
 
+${constraintsPrompt}
+
 Le directeur a relu le One Page suivant et a laissé des commentaires par section. Régénère le document en tenant compte de TOUS les commentaires. Ne change que ce qui est commenté — le reste reste intact.
+
+**IMPORTANT** : Assure-toi que la version mise à jour respecte TOUTES les contraintes pour jeux simples ci-dessus.
 
 Brief original :
 ${briefBlock}

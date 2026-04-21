@@ -1,36 +1,69 @@
 export const GDD_TEMPLATE = `# Game Design Document — {titre}
 
-## 1. Vision du jeu
+## 1. Vision Simple
 ### Pitch (1 phrase)
-### Concept Core (3-5 phrases)
-### Références / Inspirations
-### Public cible
+Ex: "Un jeu de puzzle où le joueur fait tourner des blocs pour former des lignes complètes."
 
-## 2. Gameplay
-### Core Loop (boucle principale)
-### Mécaniques principales
-### Mécaniques secondaires
-### Systèmes de progression
+### Concept Core (2-3 phrases MAX)
+Décrire l'essence du jeu en termes simples.
 
-## 3. Univers & Narration
-### Setting / Univers
-### Personnages principaux
-### Arc narratif (si applicable)
+### Jeux de Référence (1-2 MAX)
+Ex: "Inspiré par Tetris et 2048"
+
+## 2. Gameplay Minimal
+### Core Loop Simple (3 étapes MAX)
+1. [Action principale]
+2. [Feedback immédiat]
+3. [Récompense/progression]
+
+### Mécaniques Principales (MAX 3)
+- [Mécanique 1]
+- [Mécanique 2]
+- [Mécanique 3] (optionnel)
+
+### Mécaniques Secondaires (MAX 2)
+- [Mécanique secondaire 1]
+- [Mécanique secondaire 2] (optionnel)
+
+### Progression Simple
+Comment le joueur progresse (score, niveaux, etc.)
+
+## 3. Univers Léger
+### Setting Simple (2-3 phrases)
+Contexte minimal pour donner du sens au gameplay.
+
 ### Ambiance / Ton
+Ton général du jeu (fun, sérieux, mystérieux, etc.)
 
-## 4. Structure du jeu
-### Niveaux / Zones / Chapitres
-### Durée de vie estimée
-### Modes de jeu
+## 4. Structure Minimaliste
+### Écrans / Menus (MAX 5)
+1. Menu principal
+2. Écran de jeu
+3. Pause
+4. Game Over
+5. High Scores
 
-## 5. Monétisation (si applicable)
-### Modèle économique
-### Contenu additionnel prévu
+### Durée de Session
+[2-15 minutes MAX]
 
-## 6. Contraintes
-### Plateforme(s) cible(s)
-### Limitations techniques connues
-### Budget / Scope`;
+## 5. Contraintes Techniques
+### Plateforme
+Web uniquement
+
+### Limitations
+- Simple à développer
+- Performant sur navigateur
+- Pas de données persistantes complexes
+
+## 6. Scope V1
+### IN Scope (essentiel)
+- [Feature essentielle 1]
+- [Feature essentielle 2]
+- [Feature essentielle 3 MAX]
+
+### OUT Scope (pour plus tard)
+- [Feature complexe reportée]
+- [Feature optionnelle]`;
 
 export const TECH_SPEC_TEMPLATE = `# Spécification Technique — {titre}
 

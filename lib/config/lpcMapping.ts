@@ -72,7 +72,7 @@ const HAIR_MALE_BY_DEPT: Record<string, string[]> = {
 
 const HAIR_FEMALE_BY_DEPT: Record<string, string[]> = {
   art: ["messy1", "braid", "pigtails"],
-  programming: ["ponytail", "bun", "pixie"],
+  programming: ["ponytail", "bid", "pixie"],
   "game-design": ["pigtails", "wavy", "bunches"],
   audio: ["dreadlocks_long", "afro", "cornrows"],
   narrative: ["long", "wavy", "braid"],
@@ -80,6 +80,108 @@ const HAIR_FEMALE_BY_DEPT: Record<string, string[]> = {
   marketing: ["wavy", "xlong_wavy", "bangs"],
   production: ["half_up", "pixie", "ponytail"],
 };
+
+const HAIR_STYLE_LABELS: Record<string, string> = {
+  none: "Aucun / chauve",
+  afro: "Afro",
+  bangs: "Frange",
+  bid: "Bun / chignon",
+  braid: "Tresse",
+  bunches: "Couettes rondes",
+  buzzcut: "Buzz cut",
+  cornrows: "Cornrows",
+  curtains: "Rideaux",
+  dreadlocks_long: "Dreadlocks longues",
+  half_up: "Semi-attachés",
+  long: "Longs",
+  messy1: "Décoiffés",
+  parted: "Raie sur le côté",
+  pigtails: "Couettes",
+  pixie: "Pixie",
+  plain: "Classique",
+  ponytail: "Queue-de-cheval",
+  shorthawk: "Faux hawk court",
+  swoop: "Mèche balayée",
+  unkempt: "Ébouriffés",
+  wavy: "Ondulés",
+  xlong_wavy: "Très longs ondulés",
+};
+
+const HAIR_STYLE_ALIASES: Record<string, string> = {
+  bun: "bid",
+};
+
+export interface LpcHairStyleOption {
+  value: string;
+  label: string;
+}
+
+export interface LpcLayerEntry {
+  url: string;
+  kind: "body" | "head" | "hair" | "torso" | "legs";
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+const ALL_MALE_HAIR_STYLES = unique(Object.values(HAIR_MALE_BY_DEPT).flat());
+const ALL_FEMALE_HAIR_STYLES = unique(Object.values(HAIR_FEMALE_BY_DEPT).flat());
+
+function getHairStyleLabel(style: string): string {
+  const normalizedStyle = HAIR_STYLE_ALIASES[style] ?? style;
+  return HAIR_STYLE_LABELS[normalizedStyle] ?? normalizedStyle.replace(/_/g, " ");
+}
+
+function normalizeHairStyle(style: string | null | undefined): string | null {
+  if (!style) {
+    return null;
+  }
+
+  return HAIR_STYLE_ALIASES[style] ?? style;
+}
+
+function getDepartmentHairStyles(gender: string, department: string): string[] {
+  const isFemale = gender === "femme";
+  const deptStyles = isFemale
+    ? (HAIR_FEMALE_BY_DEPT[department] ?? ["long"])
+    : (HAIR_MALE_BY_DEPT[department] ?? ["plain"]);
+
+  return deptStyles;
+}
+
+function isValidHairStyle(gender: string, hairStyle: string): boolean {
+  const normalizedStyle = normalizeHairStyle(hairStyle);
+  if (normalizedStyle === "none") {
+    return true;
+  }
+
+  const availableStyles = gender === "femme" ? ALL_FEMALE_HAIR_STYLES : ALL_MALE_HAIR_STYLES;
+  return normalizedStyle ? availableStyles.includes(normalizedStyle) : false;
+}
+
+export function getAvailableLpcHairStyles(gender: string, department: string): LpcHairStyleOption[] {
+  const deptStyles = getDepartmentHairStyles(gender, department);
+
+  return ["none", ...deptStyles].map((style) => ({
+    value: normalizeHairStyle(style) ?? style,
+    label: getHairStyleLabel(style),
+  }));
+}
+
+export function getAllAvailableLpcHairStyles(gender: string): LpcHairStyleOption[] {
+  const allStyles = gender === "femme" ? ALL_FEMALE_HAIR_STYLES : ALL_MALE_HAIR_STYLES;
+
+  return ["none", ...allStyles].map((style) => ({
+    value: normalizeHairStyle(style) ?? style,
+    label: getHairStyleLabel(style),
+  }));
+}
+
+export function getDefaultLpcHairStyle(gender: string, department: string): string {
+  const [firstStyle] = getDepartmentHairStyles(gender, department);
+  return normalizeHairStyle(firstStyle) ?? "none";
+}
 
 // ── Pants colors per department ────────────────────────────────────────────
 // Colors confirmed at legs/pants/{gender}/walk/{color}.png
@@ -111,7 +213,7 @@ function pick<T>(arr: T[], seed: number): T {
 
 export interface LpcLayerSpec {
   /** ordered list of full PNG URLs to composite (bottom → top) */
-  layers: string[];
+  layers: LpcLayerEntry[];
   /** Spritesheet dimensions: 576×256 (9 frames × 4 rows × 64px) */
   width: number;
   height: number;
@@ -121,7 +223,7 @@ export function getLpcLayersForAgent(
   slug: string,
   gender: string,
   department: string,
-  appearancePrompt: string = ""
+  selectedHairStyle?: string | null
 ): LpcLayerSpec {
   const seed = djb2(slug);
   const dept = department in PANTS_BY_DEPT ? department : "production";
@@ -129,27 +231,30 @@ export function getLpcLayersForAgent(
   const genderKey = isFemale ? "female" : "male";
 
   // Hair: confirmed path = hair/{style}/adult/walk.png
-  const hairStyles = isFemale
-    ? (HAIR_FEMALE_BY_DEPT[dept] ?? ["long"])
-    : (HAIR_MALE_BY_DEPT[dept] ?? ["plain"]);
-  const hairStyle = pick(hairStyles, seed);
+  const hairStyles = getDepartmentHairStyles(gender, dept);
+  const normalizedSelectedHairStyle = normalizeHairStyle(selectedHairStyle);
+  const hairStyle = normalizedSelectedHairStyle && isValidHairStyle(gender, normalizedSelectedHairStyle)
+    ? normalizedSelectedHairStyle
+    : pick(hairStyles, seed);
 
   // Pants color: confirmed path = legs/pants/{gender}/walk/{color}.png
   const pantsColors = PANTS_BY_DEPT[dept] ?? PANTS_BY_DEPT.production;
   const pantsColor = pick(pantsColors, seed + 2);
 
-  const layers: string[] = [
+  const layers: LpcLayerEntry[] = [
     // Body — confirmed: body/bodies/{gender}/walk.png
-    `${RAW}/body/bodies/${genderKey}/walk.png`,
+    { url: `${RAW}/body/bodies/${genderKey}/walk.png`, kind: "body" },
     // Head — confirmed: head/heads/human/{gender}/walk.png
-    `${RAW}/head/heads/human/${genderKey}/walk.png`,
-    // Hair — confirmed: hair/{style}/adult/walk.png
-    `${RAW}/hair/${hairStyle}/adult/walk.png`,
+    { url: `${RAW}/head/heads/human/${genderKey}/walk.png`, kind: "head" },
     // Torso — confirmed: torso/clothes/longsleeve/longsleeve/{gender}/walk.png
-    `${RAW}/torso/clothes/longsleeve/longsleeve/${genderKey}/walk.png`,
+    { url: `${RAW}/torso/clothes/longsleeve/longsleeve/${genderKey}/walk.png`, kind: "torso" },
     // Legs — confirmed: legs/pants/{gender}/walk/{color}.png
-    `${RAW}/legs/pants/${genderKey}/walk/${pantsColor}.png`,
+    { url: `${RAW}/legs/pants/${genderKey}/walk/${pantsColor}.png`, kind: "legs" },
   ];
+
+  if (hairStyle !== "none") {
+    layers.splice(2, 0, { url: `${RAW}/hair/${hairStyle}/adult/walk.png`, kind: "hair" });
+  }
 
   return { layers, width: 576, height: 256 };
 }

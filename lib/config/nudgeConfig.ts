@@ -1,6 +1,6 @@
 import { PersonalityTrait } from "@/lib/types/agent";
 
-export const MAX_NUDGES = 3;
+export const MAX_NUDGES = 1;
 
 /** Plage de délai en millisecondes [min, max] par classe de personnalité */
 const NUDGE_DELAY_MS: Record<string, [number, number]> = {

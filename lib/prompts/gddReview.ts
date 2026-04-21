@@ -6,6 +6,7 @@
 import type { Project } from "@/lib/types/project";
 import { GDD_TEMPLATE } from "@/lib/prompts/templates/docs";
 import type { CritiqueQuestion } from "@/lib/types/brainstorming";
+import { buildSimpleGameConstraintsPrompt } from "@/lib/config/gameConstraints";
 
 const TRIPLE_BACKTICK = "```";
 
@@ -23,9 +24,13 @@ export function buildGddV1Prompt(
     ? `One Page validé par le directeur :\n---\n${onePage}\n---\n\nComplément de description :\n---\n${scopeInput}\n---`
     : `Concept du projet :\n---\n${scopeInput}\n---`;
 
+  const constraintsPrompt = buildSimpleGameConstraintsPrompt();
+
   return `Tu es un Game Designer senior chez Eden Studio.
 
 ${studioContext}
+
+${constraintsPrompt}
 
 Tu travailles sur le jeu "${project.title}".
 
@@ -36,15 +41,16 @@ En te basant STRICTEMENT sur ce concept, rédige le Game Design Document complet
 ${GDD_TEMPLATE.replace(/{titre}/g, project.title)}
 
 RÈGLES IMPÉRATIVES :
-- Respecte les contraintes absolues du studio listées dans le contexte ci-dessus
-- Sois 100% fidèle au scope — ne rajoute rien qui n'a pas été mentionné ou qui en découle logiquement
-- Sois spécifique et actionnable pour chaque section
-- Utilise des exemples concrets adaptés au genre et à l'univers Academia Vespana
-- Format : Markdown propre, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation
-- N'échappe jamais le document en JSON ou avec des \\n
-- Langue : Français
-- MAX 3500 mots
-- Ne réponds QUE avec le contenu du GDD, sans introduction ni commentaire`;
+1. Respecte TOUTES les contraintes pour jeux simples ci-dessus
+2. Sois 100% fidèle au scope — ne rajoute rien qui n'a pas été mentionné ou qui en découle logiquement
+3. Limite la complexité : MAX 3 mécaniques principales, MAX 2 secondaires
+4. Sois spécifique et actionnable pour chaque section
+5. Utilise des exemples de jeux simples (Tetris, Pong, 2048) comme référence
+6. Format : Markdown propre, sans bloc ${TRIPLE_BACKTICK}markdown, sans backticks d'encapsulation
+7. N'échappe jamais le document en JSON ou avec des \\n
+8. Langue : Français
+9. MAX 1500 mots (pas 3500 ! Garde-le court et simple)
+10. Ne réponds QUE avec le contenu du GDD, sans introduction ni commentaire`;
 }
 
 // ============================================================
@@ -61,9 +67,12 @@ export function buildGddCritiquePrompt(
     ? `\nOne Page validé (référence) :\n---\n${onePage}\n---\n`
     : "";
 
+  const constraintsPrompt = buildSimpleGameConstraintsPrompt();
+
   return `Tu es un Game Designer senior chez Eden Studio qui vient de rédiger un premier jet de GDD pour "${project.title}".
 
 ${studioContext}
+${constraintsPrompt}
 ${onePageBlock}
 Voici le GDD V1 :
 ---
@@ -73,11 +82,18 @@ ${gddV1}
 Relis ce document de façon critique. Identifie les points qui nécessitent une clarification du directeur de studio avant de pouvoir finaliser le GDD.
 
 Cherche spécifiquement :
-1. Les ambiguïtés qui pourraient bloquer le développement (mécanique floue, scope incertain)
-2. Les choix importants que le GDD a tranché sans confirmation du directeur
-3. Les sections incomplètes ou trop vagues pour être actionnables
-4. Les contradictions internes éventuelles${onePage ? "\n5. Les contradictions entre le GDD V1 et la One Page validée" : ""}
-5. Les violations des contraintes studio (monétisation inventée, plateforme non-web, équipe humaine, etc.)
+1. Les violations des contraintes pour jeux simples (trop de mécaniques, trop complexe, etc.)
+2. Les ambiguïtés qui pourraient bloquer le développement (mécanique floue, scope incertain)
+3. Les choix importants que le GDD a tranché sans confirmation du directeur
+4. Les sections incomplètes ou trop vagues pour être actionnables
+5. Les contradictions internes éventuelles${onePage ? "\n6. Les contradictions entre le GDD V1 et la One Page validée" : ""}
+6. Les violations des contraintes studio (monétisation inventée, plateforme non-web, équipe humaine, etc.)
+
+**VÉRIFICATION DE SIMPLICITÉ** :
+- Compte le nombre de mécaniques principales (doit être ≤ 3)
+- Compte le nombre de mécaniques secondaires (doit être ≤ 2)
+- Vérifie la durée de session (doit être ≤ 15 minutes)
+- Vérifie la complexité technique (doit être adaptée au web simple)
 
 Génère entre 3 et 6 questions ciblées. Pour chaque question :
 - Si la réponse peut être choisie parmi des options prédéfinies, fournis 3-4 options courtes

@@ -3,6 +3,12 @@ import sharp from "sharp";
 import { getAgentBySlug, updateAgentFields } from "@/lib/services/agentService";
 import { getLpcLayersForAgent } from "@/lib/config/lpcMapping";
 import { supabase } from "@/lib/supabase/client";
+import { hairColors } from "@/lib/wizard-data";
+
+const LPC_HAIR_TINTS: Record<string, string> = {
+  noire: "#111111",
+  noir: "#111111",
+};
 
 const BUCKET = "agent-avatars";
 const FRAME_SIZE = 64; // LPC base tile = 64×64 px
@@ -28,17 +34,30 @@ export async function POST(
     safeSlug,
     agent.gender,
     agent.department,
-    agent.appearance_prompt ?? ""
+    agent.lpc_hair_style ?? null
   );
+
+  const hairTint = agent.lpc_hair_color
+    ? (LPC_HAIR_TINTS[agent.lpc_hair_color] ?? hairColors[agent.lpc_hair_color])
+    : null;
 
   // Fetch all layers concurrently; skip any that return non-200
   const buffers = await Promise.all(
-    layers.map(async (url) => {
+    layers.map(async (layer) => {
       try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        const res = await fetch(layer.url, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) return null;
         const ab = await res.arrayBuffer();
-        return Buffer.from(ab);
+        let buffer = Buffer.from(ab);
+
+        if (layer.kind === "hair" && hairTint) {
+          buffer = await sharp(buffer)
+            .tint(hairTint)
+            .png()
+            .toBuffer();
+        }
+
+        return buffer;
       } catch {
         return null;
       }

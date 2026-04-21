@@ -203,6 +203,7 @@ export interface AgentDraft {
   gender: Gender;
   personality: PersonalityMix;
   appearance: Appearance;
+  lpcHairStyle?: string | null;
   name?: string;
   summary?: string;
   role?: string;

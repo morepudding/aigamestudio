@@ -16,11 +16,9 @@ import {
 import type {
   Department,
   Gender,
-  PersonalityTrait,
   PersonalityMix,
   AppearanceFemme,
   AppearanceHomme,
-  AgentDraft,
 } from "@/lib/types/agent";
 import {
   departments,
@@ -38,6 +36,10 @@ import {
   ethnicColors,
   ageRanges,
 } from "@/lib/wizard-data";
+import {
+  getAvailableLpcHairStyles,
+  getDefaultLpcHairStyle,
+} from "@/lib/config/lpcMapping";
 import { projects } from "@/lib/data/projects";
 
 // ─── AI Comment Bubble ──────────────────────────────────────
@@ -137,36 +139,38 @@ function PersonalityRoulette({
   );
 }
 
-// ─── Option Grid ─────────────────────────────────────────────
-function OptionGrid<T extends string>({
-  label,
+function LpcHairStylePicker({
   options,
   value,
   onChange,
 }: {
-  label: string;
-  options: { value: T; label: string }[];
-  value: T | "";
-  onChange: (v: T) => void;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return (
     <div className="space-y-2">
-      <label className="text-sm font-medium text-muted-foreground">{label}</label>
-      <div className="flex flex-wrap gap-2">
+      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        Coupe du sprite
+      </label>
+      <div className="flex flex-wrap gap-1.5">
         {options.map((opt) => (
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs transition-all ${
               value === opt.value
-                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                : "bg-white/5 text-white/70 hover:bg-white/10 border border-white/10"
+                ? "bg-primary/20 border border-primary text-white"
+                : "bg-white/5 border border-white/10 text-white/60 hover:bg-white/10"
             }`}
           >
             {opt.label}
           </button>
         ))}
       </div>
+      <p className="text-[10px] text-white/40">
+        Détermine la coupe visible sur le petit personnage qui marche dans le studio.
+      </p>
     </div>
   );
 }
@@ -216,6 +220,7 @@ export default function RecruterPage() {
     ethnie: "",
     age: "",
   });
+  const [lpcHairStyle, setLpcHairStyle] = useState("");
 
   // Summary step
   const [generatedName, setGeneratedName] = useState({ firstName: "", lastName: "" });
@@ -230,6 +235,23 @@ export default function RecruterPage() {
   const [isStudioAssignment, setIsStudioAssignment] = useState(false);
 
   const appearance = gender === "femme" ? appearanceFemme : appearanceHomme;
+  const availableLpcHairStyles = gender && department
+    ? getAvailableLpcHairStyles(gender, department)
+    : [];
+  const selectedLpcHairStyle = availableLpcHairStyles.find((opt) => opt.value === lpcHairStyle);
+
+  useEffect(() => {
+    if (!gender || !department) {
+      return;
+    }
+
+    const nextOptions = getAvailableLpcHairStyles(gender, department);
+    if (nextOptions.some((opt) => opt.value === lpcHairStyle)) {
+      return;
+    }
+
+    setLpcHairStyle(getDefaultLpcHairStyle(gender, department));
+  }, [department, gender, lpcHairStyle]);
 
   // ── Fetch AI comment ─────────────────────────────────────
   const fetchComment = useCallback(async (context: string, stepName: string) => {
@@ -341,6 +363,7 @@ export default function RecruterPage() {
             gender,
             personality: personalityMix,
             appearance,
+            lpcHairStyle,
             name: fullName,
             assignedProject: isStudioAssignment ? "studio" : assignedProject,
           },
@@ -559,6 +582,7 @@ export default function RecruterPage() {
                     arr[Math.floor(Math.random() * arr.length)].value;
                   if (gender === "femme") {
                     const trait = randomPick(appearanceOptions.femme.traitDistinctif) as string;
+                    const hairStyles = getAvailableLpcHairStyles("femme", department).filter((opt) => opt.value !== "none");
                     setAppearanceFemme({
                       cheveux: randomPick(appearanceOptions.femme.cheveux) as string,
                       yeux: randomPick(appearanceOptions.femme.yeux) as string,
@@ -570,8 +594,10 @@ export default function RecruterPage() {
                       ethnie: ethnies[Math.floor(Math.random() * ethnies.length)].value,
                       age: ageRanges[Math.floor(Math.random() * ageRanges.length)].value,
                     });
+                    setLpcHairStyle(hairStyles[Math.floor(Math.random() * hairStyles.length)]?.value ?? getDefaultLpcHairStyle("femme", department));
                   } else {
                     const trait = randomPick(appearanceOptions.femme.traitDistinctif) as string;
+                    const hairStyles = getAvailableLpcHairStyles("homme", department).filter((opt) => opt.value !== "none");
                     setAppearanceHomme({
                       cheveux: randomPick(appearanceOptions.homme.cheveux) as string,
                       morphologie: randomPick(appearanceOptions.homme.morphologie) as string,
@@ -582,6 +608,7 @@ export default function RecruterPage() {
                       ethnie: ethnies[Math.floor(Math.random() * ethnies.length)].value,
                       age: ageRanges[Math.floor(Math.random() * ageRanges.length)].value,
                     });
+                    setLpcHairStyle(hairStyles[Math.floor(Math.random() * hairStyles.length)]?.value ?? getDefaultLpcHairStyle("homme", department));
                   }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-medium text-white transition-all hover:scale-105 active:scale-95"
@@ -615,6 +642,12 @@ export default function RecruterPage() {
                     <span className="text-[10px] text-white/50">{[...appearanceOptions.femme.cheveux].find(o => o.value === appearanceFemme.cheveux)?.label}</span>
                   )}
                 </div>
+
+                <LpcHairStylePicker
+                  options={availableLpcHairStyles}
+                  value={lpcHairStyle}
+                  onChange={setLpcHairStyle}
+                />
 
                 {/* Eyes */}
                 <div className="space-y-2">
@@ -814,6 +847,12 @@ export default function RecruterPage() {
                     <span className="text-[10px] text-white/50">{[...appearanceOptions.homme.cheveux].find(o => o.value === appearanceHomme.cheveux)?.label}</span>
                   )}
                 </div>
+
+                <LpcHairStylePicker
+                  options={availableLpcHairStyles}
+                  value={lpcHairStyle}
+                  onChange={setLpcHairStyle}
+                />
 
                 {/* Morphology */}
                 <div className="space-y-2">
@@ -1029,6 +1068,11 @@ export default function RecruterPage() {
                     <span className="px-2 py-1 rounded-full bg-white/5 text-white/60 text-xs font-medium">
                       {gender === "femme" ? "♀️" : "♂️"} {gender}
                     </span>
+                    {selectedLpcHairStyle && (
+                      <span className="px-2 py-1 rounded-full bg-white/5 text-white/60 text-xs font-medium">
+                        Coupe sprite: {selectedLpcHairStyle.label}
+                      </span>
+                    )}
                   </div>
                 </div>
 

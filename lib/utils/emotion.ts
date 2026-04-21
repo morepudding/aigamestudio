@@ -54,6 +54,8 @@ export function parseEmotion(content: string): ParsedMessage {
 
   // Strip [émotion: ...] tag
   let text = content.replace(EMOTION_REGEX, "").trim();
+  // Remove bubble separator if it wasn't split upstream
+  text = text.split("|||").map((p) => p.trim()).filter(Boolean).join("\n");
   // Remove markdown markers but keep the wrapped content.
   text = text
     .replace(BOLD_MARKDOWN_REGEX, "$1")

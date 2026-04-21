@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing draft" }, { status: 400 });
   }
 
-  const { department, gender, personality, appearance, name, assignedProject } = draft;
+  const { department, gender, personality, appearance, name, assignedProject, lpcHairStyle } = draft;
 
   const appearanceDesc = Object.entries(appearance)
     .map(([key, val]) => `${key}: ${val}`)
@@ -166,6 +166,8 @@ task_name:
         assigned_project: agentData.assigned_project?.trim() ?? (draft.assignedProject ?? ""),
         portrait_url: null,
         icon_url: null,
+        lpc_hair_style: (lpcHairStyle ?? "").trim() || null,
+        lpc_hair_color: typeof appearance?.cheveux === "string" ? appearance.cheveux.trim() || null : null,
         mood: "neutre" as const,
         mood_cause: null,
         mood_updated_at: null,

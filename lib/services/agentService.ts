@@ -70,6 +70,10 @@ export interface Agent {
   specialization?: string | null;
   /** LPC pixel spritesheet URL (576×256, 9 frames × 4 directions) */
   lpc_sprite_url?: string | null;
+  /** Explicit LPC hair style chosen by the user for the walking sprite. */
+  lpc_hair_style?: string | null;
+  /** Explicit LPC hair color key used for the walking sprite. */
+  lpc_hair_color?: string | null;
   /** Prompt métier utilisé lors des tâches pro (One Page, pipeline, reviews). Distinct de la personnalité. */
   prompt_pro?: string | null;
 }
@@ -131,6 +135,8 @@ export async function createAgent(
     assigned_project: agent.assigned_project,
     portrait_url: agent.portrait_url ?? null,
     icon_url: agent.icon_url ?? null,
+    lpc_hair_style: agent.lpc_hair_style ?? null,
+    lpc_hair_color: agent.lpc_hair_color ?? null,
   });
 
   if (agentErr) throw new Error(agentErr.message);
@@ -151,7 +157,7 @@ export async function createAgent(
 
 export async function updateAgentFields(
   slug: string,
-  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level" | "personality_bio" | "appearance_prompt" | "gender" | "position" | "specialization" | "lpc_sprite_url">>
+  updates: Partial<Pick<Agent, "status" | "assigned_project" | "portrait_url" | "icon_url" | "mood" | "mood_cause" | "mood_updated_at" | "confidence_level" | "personality_bio" | "appearance_prompt" | "gender" | "position" | "specialization" | "lpc_sprite_url" | "lpc_hair_style" | "lpc_hair_color">>
 ): Promise<void> {
   const { error } = await supabase.from("agents").update(updates).eq("slug", slug);
   if (error) throw new Error(error.message);
