@@ -48,7 +48,7 @@ export async function POST(
         const res = await fetch(layer.url, { signal: AbortSignal.timeout(8000) });
         if (!res.ok) return null;
         const ab = await res.arrayBuffer();
-        let buffer = Buffer.from(ab);
+        let buffer: Buffer = Buffer.from(ab);
 
         if (layer.kind === "hair" && hairTint) {
           buffer = await sharp(buffer)
@@ -64,7 +64,7 @@ export async function POST(
     })
   );
 
-  const validBuffers = buffers.filter((b): b is Buffer<ArrayBuffer> => b !== null);
+  const validBuffers = buffers.filter((b): b is Buffer => b !== null);
   if (validBuffers.length === 0) {
     return NextResponse.json({ error: "No LPC layers could be fetched" }, { status: 502 });
   }
