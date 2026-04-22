@@ -87,6 +87,8 @@ const ASSET_PLACEMENT: Record<PlaceableOfficeAssetType, { idPrefix: string; base
   coffee_machine: { idPrefix: "coffee", baseSize: 170 },
 };
 
+const PLACEABLE_ASSET_TYPES = Object.keys(ASSET_PLACEMENT) as PlaceableOfficeAssetType[];
+
 type OfficeAssetInstance = {
   id: string;
   type: OfficeAssetType;
