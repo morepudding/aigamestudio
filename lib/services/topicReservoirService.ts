@@ -43,13 +43,13 @@ export class TopicReservoirService {
     const scenarios: Scenario[] = [];
     
     // Diviser par les scénarios (commençant par ### X. Titre)
-    const scenarioRegex = /### (\d+)\. (.+?)(?=### \d+\. |\n## |$)/gs;
+    const scenarioRegex = /### (\d+)\. ([^\n]+)\n([\s\S]*?)(?=### \d+\. |\n## |$)/g;
     let match;
     let scenarioId = 1;
     
     while ((match = scenarioRegex.exec(content)) !== null) {
-      const [, number, title] = match;
-      const scenarioContent = match[0];
+      const [, number, title, body] = match;
+      const scenarioContent = `### ${number}. ${title}\n${body}`;
       
       const scenario: Partial<Scenario> = {
         id: scenarioId++,
@@ -136,7 +136,7 @@ export class TopicReservoirService {
       }
       
       // S'assurer que tous les champs requis sont remplis
-      if (scenario.situation && scenario.action && scenario.examples.length > 0) {
+      if (scenario.situation && scenario.action && (scenario.examples?.length ?? 0) > 0) {
         scenarios.push(scenario as Scenario);
       }
     }
