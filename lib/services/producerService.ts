@@ -86,6 +86,21 @@ const CONCEPT_DOCS: ConceptDocDef[] = [
   },
 ];
 
+const PROGRAMMER_SPECIALIZATION_SET = new Set<ProgrammerSpecialization>([
+  "gameplay",
+  "engine",
+  "backend",
+  "ui-tech",
+  "devops",
+]);
+
+function toProgrammerSpecialization(value: string | null | undefined): ProgrammerSpecialization | undefined {
+  if (!value) return undefined;
+  return PROGRAMMER_SPECIALIZATION_SET.has(value as ProgrammerSpecialization)
+    ? (value as ProgrammerSpecialization)
+    : undefined;
+}
+
 // ============================================================
 // Prompt builders
 // ============================================================
@@ -1119,7 +1134,7 @@ async function createNextWaveTasksFromCrewAIWave(params: {
       .map((reference) => refToTaskId.get(reference))
       .filter(Boolean) as string[];
 
-    const preferredSpecialization = def.specialization || null;
+    const preferredSpecialization = toProgrammerSpecialization(def.specialization);
     const assignment = inferTaskAssignment(
       def.title,
       def.description,
@@ -1130,7 +1145,7 @@ async function createNextWaveTasksFromCrewAIWave(params: {
       agents,
       def.title,
       def.description,
-      preferredSpecialization || (assignment.specialization as ProgrammerSpecialization | undefined)
+      preferredSpecialization ?? assignment.specialization
     );
 
     const task = await createTask({
@@ -1181,7 +1196,7 @@ async function createDevTasksFromWaveDefs(
     const status: PipelineTask["status"] =
       definition.waveNumber === 1 && dependsOn.length === 0 ? "ready" : "created";
 
-    const preferredSpecialization = definition.specialization || null;
+    const preferredSpecialization = toProgrammerSpecialization(definition.specialization);
     const assignment = inferTaskAssignment(
       definition.title,
       definition.description,
@@ -1192,7 +1207,7 @@ async function createDevTasksFromWaveDefs(
       agents,
       definition.title,
       definition.description,
-      preferredSpecialization || (assignment.specialization as ProgrammerSpecialization | undefined)
+      preferredSpecialization ?? assignment.specialization
     );
 
     const task = await createTask({
@@ -1357,7 +1372,7 @@ export async function generateNextDevWave(projectId: string, project: Project): 
 
     // Utiliser la spécialisation générée par l'IA si présente, sinon fallback sur inferTaskAssignment
     // L'IA est plus fiable car elle connaît le contexte complet de la tâche
-    const preferredSpecialization = def.specialization || null;
+    const preferredSpecialization = toProgrammerSpecialization(def.specialization);
     const assignment = inferTaskAssignment(
       def.title, 
       def.description, 
@@ -1368,7 +1383,7 @@ export async function generateNextDevWave(projectId: string, project: Project): 
       agents,
       def.title,
       def.description,
-      preferredSpecialization || (assignment.specialization as ProgrammerSpecialization | undefined)
+      preferredSpecialization ?? assignment.specialization
     );
 
     const task = await createTask({
