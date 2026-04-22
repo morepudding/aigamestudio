@@ -94,6 +94,43 @@ function getCrewAIBacklogPlannerUrl(): string | null {
   return `${baseUrl}/plan-backlog`;
 }
 
+function resolvePlanningEngine(project: Project): string {
+  const webEngine = project.courseInfo?.webEngine?.trim();
+  if (webEngine) return webEngine;
+
+  const engine = project.engine?.trim();
+  if (engine) return engine;
+
+  return "web";
+}
+
+function resolvePlanningPlatforms(): string[] {
+  return ["web"];
+}
+
+function buildPlanningContext(project: Project): BacklogPlanningPayload["context"] {
+  const courseName = project.courseInfo?.courseName?.trim() || project.title;
+  const mechanics = project.courseInfo?.mechanics?.filter(Boolean) ?? [];
+  const resolvedEngine = resolvePlanningEngine(project);
+
+  return {
+    studioIdentity:
+      "Eden Studio produit uniquement des mini-jeux web integres dans un visual novel d'espionnage. Aucun plan ne doit viser Godot, mobile, desktop natif ou console.",
+    productDirective: [
+      `Le projet \"${project.title}\" doit rester compact, lisible et livrable rapidement.`,
+      "Le scope cible est celui d'un jeu d'arcade simple et propre, comparable a Pong, Tetris ou un slice tres concentre de Mario Bros.",
+      "Prioriser une boucle de gameplay forte, une UI nette, une prise en main immediate et une sortie reelle plutot que des systemes ambitieux.",
+      `Le cours espion rattache est \"${courseName}\"${mechanics.length > 0 ? ` avec les mecaniques ${mechanics.join(", ")}` : ""}.`,
+    ].join(" "),
+    technicalDirective: [
+      `Engine web de reference: ${resolvedEngine}.`,
+      "Plateforme cible unique: web navigateur.",
+      "L'integration VN via window.postMessage fait partie du produit, pas d'une option secondaire.",
+      "Les warnings ne doivent signaler qu'une contradiction reelle, pas re-declarer des defaults web deja imposes par le studio.",
+    ].join(" "),
+  };
+}
+
 function buildPayload(params: {
   project: Project;
   backlogMarkdown: string;
@@ -101,6 +138,8 @@ function buildPayload(params: {
   agents: Agent[];
 }): BacklogPlanningPayload {
   const { project, backlogMarkdown, documents, agents } = params;
+  const resolvedEngine = resolvePlanningEngine(project);
+  const resolvedPlatforms = resolvePlanningPlatforms();
 
   return {
     project: {
@@ -108,8 +147,8 @@ function buildPayload(params: {
       title: project.title,
       description: project.description,
       genre: project.genre,
-      engine: project.engine,
-      platforms: project.platforms,
+      engine: resolvedEngine,
+      platforms: resolvedPlatforms,
       courseInfo: project.courseInfo,
     },
     documents: {
@@ -125,6 +164,7 @@ function buildPayload(params: {
       specialization: agent.specialization ?? null,
       status: agent.status,
     })),
+    context: buildPlanningContext(project),
     constraints: {
       maxTasksPerWave: 5,
       preferSmallSlices: true,

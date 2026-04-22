@@ -8,7 +8,8 @@ import { scenarioHistoryService } from "@/lib/services/scenarioHistoryService";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMessageMetadata, buildMessageTrace, mergeAgentTraceIntoConversationMetadata } from "@/lib/services/chatMetadata";
 import { countTrailingAgentMessages, MAX_CONSECUTIVE_AGENT_MESSAGES } from "@/lib/services/conversationGuards";
-import { normalizeConversationMessage } from "@/lib/services/conversationMessageService";
+import { buildConversationFallback, buildPivotRule, detectConversationPivot, normalizeConversationMessageResult } from "@/lib/services/conversationMessageService";
+import { getConversationFeedbackSummary } from "@/lib/services/conversationFeedbackService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const CLAIM_MS = 90_000;
@@ -89,8 +90,18 @@ function getPersonalitySeedBank(personalityPrimary: string, personalityNuance?: 
   ];
 }
 
-function buildFallbackNudge(seed: string): string {
-  return seed.length <= 140 ? seed : `${seed.slice(0, 137).trimEnd()}...`;
+function buildFallbackNudge(params: {
+  seed: string;
+  agent: AgentRow;
+}): string {
+  const { seed, agent } = params;
+  return buildConversationFallback({
+    mode: "nudge",
+    userMessage: seed,
+    agentName: agent.name,
+    personalityPrimary: agent.personality_primary,
+    personalityNuance: agent.personality_nuance,
+  });
 }
 
 function buildNonScenarioSeed(params: {
@@ -131,11 +142,43 @@ async function generateNudgeMessage(params: {
   seed: string;
   scenarioSeed?: string;
   memories: AgentMemory[];
-}): Promise<string> {
-  const { agent, history, seed, scenarioSeed, memories } = params;
+  conversationId: string;
+}): Promise<{
+  message: string;
+  usedFallback: boolean;
+  fallbackKey: string | null;
+  pivotDetected: boolean;
+  blockedTopics: string[];
+  feedbackSignal: {
+    hasSignal: boolean;
+    thumbsUpCount: number;
+    thumbsDownCount: number;
+  };
+}> {
+  const { agent, history, seed, scenarioSeed, memories, conversationId } = params;
+  const recentUserMessages = history.filter((message) => message.sender === "user").slice(-3);
+  const pivot = [...recentUserMessages]
+    .reverse()
+    .map((message) => detectConversationPivot(message.content))
+    .find((candidate) => candidate.shouldPivot) ?? { shouldPivot: false, blockedTopics: [], pivotStrength: "none" as const };
+  const feedbackSummary = await getConversationFeedbackSummary({
+    conversationId,
+    agentSlug: agent.slug,
+  });
   const apiKey = process.env.OPEN_ROUTE_SERVICE_API_KEY;
   if (!apiKey) {
-    return buildFallbackNudge(seed);
+    return {
+      message: buildFallbackNudge({ seed, agent }),
+      usedFallback: true,
+      fallbackKey: `nudge:${agent.slug}`,
+      pivotDetected: pivot.shouldPivot,
+      blockedTopics: pivot.blockedTopics,
+      feedbackSignal: {
+        hasSignal: feedbackSummary.hasSignal,
+        thumbsUpCount: feedbackSummary.thumbsUpCount,
+        thumbsDownCount: feedbackSummary.thumbsDownCount,
+      },
+    };
   }
 
   const memoryContext = buildMemoryContextState(memories);
@@ -143,6 +186,8 @@ async function generateNudgeMessage(params: {
     .slice(-3)
     .map((message) => `${message.sender === "user" ? "Boss" : agent.name}: ${message.content}`)
     .join("\n");
+  const pivotRule = buildPivotRule(pivot);
+  const feedbackBlock = feedbackSummary.promptBlock ? `\n\n${feedbackSummary.promptBlock}` : "";
 
   const memorySnippet = memoryContext.promptMemories
     .split("\n")
@@ -162,7 +207,7 @@ async function generateNudgeMessage(params: {
   let systemPrompt = `Tu écris UNE relance naturelle de messagerie pour ${agent.name}.
 Personnalité: ${agent.personality_primary}${agent.personality_nuance ? `, nuance: ${agent.personality_nuance}` : ""}.
 Role: ${agent.role}.
-Backstory: ${agent.backstory ?? ""}${topicTintBlock}`;
+Backstory: ${agent.backstory ?? ""}${topicTintBlock}${feedbackBlock}`;
 
   systemPrompt += `
 
@@ -185,7 +230,7 @@ Objectif:
 - 1 a 2 phrases max.
 - 45 tokens max.
 - Francais uniquement.
-- Reste leger, humain, banal, specifique.
+- Reste leger, humain, banal, specifique.${pivotRule}
 
 ${scenarioSeed ? 'Inspiration:' : 'Seed conversationnel a reutiliser librement:'}
 ${seed}
@@ -214,22 +259,71 @@ ${memorySnippet || "Aucune"}`;
     });
 
     if (!res.ok) {
-      return buildFallbackNudge(seed);
+      return {
+        message: buildFallbackNudge({ seed, agent }),
+        usedFallback: true,
+        fallbackKey: `nudge:${agent.slug}`,
+        pivotDetected: pivot.shouldPivot,
+        blockedTopics: pivot.blockedTopics,
+        feedbackSignal: {
+          hasSignal: feedbackSummary.hasSignal,
+          thumbsUpCount: feedbackSummary.thumbsUpCount,
+          thumbsDownCount: feedbackSummary.thumbsDownCount,
+        },
+      };
     }
 
     const data = await res.json();
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== "string" || !content.trim()) {
-      return buildFallbackNudge(seed);
+      return {
+        message: buildFallbackNudge({ seed, agent }),
+        usedFallback: true,
+        fallbackKey: `nudge:${agent.slug}`,
+        pivotDetected: pivot.shouldPivot,
+        blockedTopics: pivot.blockedTopics,
+        feedbackSignal: {
+          hasSignal: feedbackSummary.hasSignal,
+          thumbsUpCount: feedbackSummary.thumbsUpCount,
+          thumbsDownCount: feedbackSummary.thumbsDownCount,
+        },
+      };
     }
 
-    const normalized = normalizeConversationMessage(normalizeNudgeMessage(content), { mode: "nudge" });
-    if (!normalized) {
-      return buildFallbackNudge(seed);
-    }
-    return normalized;
+    const normalization = normalizeConversationMessageResult(normalizeNudgeMessage(content), {
+      mode: "nudge",
+      userMessage: seed,
+      agentName: agent.name,
+      personalityPrimary: agent.personality_primary,
+      personalityNuance: agent.personality_nuance,
+      blockedTopics: pivot.blockedTopics,
+    });
+
+    return {
+      message: normalization.message,
+      usedFallback: normalization.usedFallback,
+      fallbackKey: normalization.fallbackKey,
+      pivotDetected: pivot.shouldPivot,
+      blockedTopics: pivot.blockedTopics,
+      feedbackSignal: {
+        hasSignal: feedbackSummary.hasSignal,
+        thumbsUpCount: feedbackSummary.thumbsUpCount,
+        thumbsDownCount: feedbackSummary.thumbsDownCount,
+      },
+    };
   } catch {
-    return buildFallbackNudge(seed);
+    return {
+      message: buildFallbackNudge({ seed, agent }),
+      usedFallback: true,
+      fallbackKey: `nudge:${agent.slug}`,
+      pivotDetected: pivot.shouldPivot,
+      blockedTopics: pivot.blockedTopics,
+      feedbackSignal: {
+        hasSignal: feedbackSummary.hasSignal,
+        thumbsUpCount: feedbackSummary.thumbsUpCount,
+        thumbsDownCount: feedbackSummary.thumbsDownCount,
+      },
+    };
   }
 }
 
@@ -346,24 +440,53 @@ export async function POST() {
         });
       }
 
-      const message = await generateNudgeMessage({
+      const generated = await generateNudgeMessage({
         agent,
         history,
         seed,
         scenarioSeed: scenarioSeed || undefined,
         memories: (memoryRows ?? []) as AgentMemory[],
+        conversationId: conversation.id,
       });
 
       const timestamp = Date.now();
       const messageId = `${timestamp}-${Math.random().toString(36).slice(2, 9)}`;
+      const promptVariant = [
+        selectedScenarioId !== null ? "topic-reservoir" : "seed-nudge",
+        generated.feedbackSignal.hasSignal ? "feedback" : null,
+        generated.pivotDetected ? "pivot" : null,
+      ]
+        .filter(Boolean)
+        .join("+");
       const messageMetadata = buildMessageMetadata(
-        selectedScenarioId !== null
+        generated.usedFallback
+          ? buildMessageTrace("nudge", "fallback", {
+              scenarioId: selectedScenarioId,
+              scenarioTitle: scenario?.title ?? null,
+              selectedAt: timestamp,
+              promptVariant,
+              fallbackKey: generated.fallbackKey,
+              pivotDetected: generated.pivotDetected,
+              blockedTopics: generated.blockedTopics,
+              feedbackSignal: generated.feedbackSignal,
+            })
+          : selectedScenarioId !== null
           ? buildMessageTrace("nudge", "topic_reservoir", {
               scenarioId: selectedScenarioId,
               scenarioTitle: scenario?.title ?? null,
               selectedAt: timestamp,
+              promptVariant,
+              pivotDetected: generated.pivotDetected,
+              blockedTopics: generated.blockedTopics,
+              feedbackSignal: generated.feedbackSignal,
             })
-          : buildMessageTrace("nudge", "seed_nudge", { selectedAt: timestamp })
+          : buildMessageTrace("nudge", "seed_nudge", {
+              selectedAt: timestamp,
+              promptVariant,
+              pivotDetected: generated.pivotDetected,
+              blockedTopics: generated.blockedTopics,
+              feedbackSignal: generated.feedbackSignal,
+            })
       );
 
       const { error: messageError } = await supabase
@@ -372,7 +495,7 @@ export async function POST() {
           id: messageId,
           conversation_id: conversation.id,
           sender: "agent",
-          content: message,
+          content: generated.message,
           timestamp,
           message_type: "normal",
           metadata: messageMetadata,

@@ -9,6 +9,12 @@ export interface BacklogPlanningDocuments {
   dataArch: string | null;
 }
 
+export interface BacklogPlanningContext {
+  studioIdentity: string;
+  productDirective: string;
+  technicalDirective: string;
+}
+
 export interface BacklogPlanningPayload {
   project: Pick<
     Project,
@@ -18,6 +24,7 @@ export interface BacklogPlanningPayload {
   agents: Array<
     Pick<Agent, "slug" | "name" | "department" | "specialization" | "status">
   >;
+  context: BacklogPlanningContext;
   constraints: {
     maxTasksPerWave: number;
     preferSmallSlices: boolean;

@@ -760,11 +760,24 @@ ${completedWork}`;
     generateRepoGroundedDocument(backlogPrompt),
   ]);
 
-  await Promise.all([
-    pushFile(project.githubRepoName, "docs/gdd.md", gdd, "[eden] producer: regenerate gdd from repo state"),
-    pushFile(project.githubRepoName, "docs/tech-spec.md", techSpec, "[eden] producer: regenerate tech spec from repo state"),
-    pushFile(project.githubRepoName, "docs/backlog.md", backlog, "[eden] producer: regenerate backlog from repo state"),
-  ]);
+  await pushFile(
+    project.githubRepoName,
+    "docs/gdd.md",
+    gdd,
+    "[eden] producer: regenerate gdd from repo state"
+  );
+  await pushFile(
+    project.githubRepoName,
+    "docs/tech-spec.md",
+    techSpec,
+    "[eden] producer: regenerate tech spec from repo state"
+  );
+  await pushFile(
+    project.githubRepoName,
+    "docs/backlog.md",
+    backlog,
+    "[eden] producer: regenerate backlog from repo state"
+  );
 
   await Promise.all([
     syncConceptTaskDeliverable(projectId, "docs/gdd.md", gdd),
@@ -1069,6 +1082,87 @@ function convertCrewAIWavesToDevWaveDefs(waves: BacklogPlanningWave[]): DevWaveD
   }));
 }
 
+function selectNextCrewAIWave(params: {
+  waves: BacklogPlanningWave[];
+  existingTasks: PipelineTask[];
+  nextWaveNumber: number;
+}): BacklogPlanningWave | null {
+  const { waves, existingTasks, nextWaveNumber } = params;
+  const consumedRefs = new Set(existingTasks.map((task) => task.backlogRef).filter(Boolean));
+
+  const normalizedWaves = [...waves]
+    .sort((left, right) => left.number - right.number)
+    .map((wave) => ({
+      ...wave,
+      tasks: wave.tasks.filter((task) => !consumedRefs.has(task.backlog_ref)),
+    }))
+    .filter((wave) => wave.tasks.length > 0);
+
+  return (
+    normalizedWaves.find((wave) => wave.number >= nextWaveNumber) ?? normalizedWaves[0] ?? null
+  );
+}
+
+async function createNextWaveTasksFromCrewAIWave(params: {
+  projectId: string;
+  wave: BacklogPlanningWave;
+  baseSortOrder: number;
+  agents: Agent[];
+}): Promise<PipelineTask[]> {
+  const { projectId, wave, baseSortOrder, agents } = params;
+  const createdTasks: PipelineTask[] = [];
+  const refToTaskId = new Map<string, string>();
+
+  for (let index = 0; index < wave.tasks.length; index++) {
+    const def = wave.tasks[index];
+    const dependsOn = (def.depends_on_refs ?? [])
+      .map((reference) => refToTaskId.get(reference))
+      .filter(Boolean) as string[];
+
+    const preferredSpecialization = def.specialization || null;
+    const assignment = inferTaskAssignment(
+      def.title,
+      def.description,
+      def.agent_department ?? undefined
+    );
+    const assignedAgent = pickAgent(
+      assignment.agentDepartment,
+      agents,
+      def.title,
+      def.description,
+      preferredSpecialization || (assignment.specialization as ProgrammerSpecialization | undefined)
+    );
+
+    const task = await createTask({
+      projectId,
+      title: def.title,
+      description: def.description,
+      backlogRef: def.backlog_ref ?? null,
+      projectPhase: "in-dev",
+      waveNumber: wave.number,
+      sortOrder: baseSortOrder + index,
+      status: dependsOn.length === 0 ? "ready" : "created",
+      requiresReview: false,
+      assignedAgentSlug: assignedAgent?.slug ?? null,
+      agentDepartment: assignment.agentDepartment,
+      llmModel: LLM_MODELS.tasks,
+      llmPromptTemplate: null,
+      llmContextFiles: Array.from(
+        new Set((def.context_files ?? []).map((path) => normalizeRepoPath(path)).filter(Boolean))
+      ),
+      deliverableType: normalizeDeliverableType(def.deliverable_type, def.deliverable_path),
+      deliverablePath: def.deliverable_path ? normalizeRepoPath(def.deliverable_path) : null,
+      deliverableContent: null,
+      dependsOn,
+    });
+
+    createdTasks.push(task);
+    refToTaskId.set(def.backlog_ref, task.id);
+  }
+
+  return createdTasks;
+}
+
 async function createDevTasksFromWaveDefs(
   projectId: string,
   waves: DevWaveDef[],
@@ -1213,6 +1307,33 @@ export async function generateNextDevWave(projectId: string, project: Project): 
 
   const agents = await getAllAgents();
   const nextWaveNumber = Math.max(...existing.map((task) => task.waveNumber), 0) + 1;
+
+  if (isCrewAIBacklogPlannerEnabled()) {
+    const crewResult = await planBacklogWithCrewAI({
+      project,
+      backlogMarkdown: backlogContent,
+      documents: { gdd, techSpec, dataArch },
+      agents,
+    });
+
+    const nextCrewWave = crewResult
+      ? selectNextCrewAIWave({
+          waves: crewResult.waves,
+          existingTasks: existing,
+          nextWaveNumber,
+        })
+      : null;
+
+    if (nextCrewWave) {
+      return createNextWaveTasksFromCrewAIWave({
+        projectId,
+        wave: { ...nextCrewWave, number: nextWaveNumber },
+        baseSortOrder: existing.length,
+        agents,
+      });
+    }
+  }
+
   const repoFiles = await getRepositorySnapshot(project.githubRepoName, {
     maxFiles: 14,
     maxFileChars: 3500,

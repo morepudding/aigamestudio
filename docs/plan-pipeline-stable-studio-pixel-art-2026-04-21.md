@@ -385,6 +385,299 @@ Critere de succes : l'utilisateur percoit la vie du studio sans remarquer les co
 
 ---
 
+## Ordre d'implementation concret
+
+Si vous voulez savoir quoi faire dans le bon ordre, il faut suivre cette sequence stricte.
+
+Ne passez pas a l'etape suivante tant que la precedente n'a pas atteint son critere de sortie.
+
+## Ordre reel de travail
+
+### Ordre 1. Definir le format cible avant toute generation
+
+Actions :
+
+- fixer une resolution de travail unique pour les essais, par exemple 512x512
+- fixer une perspective cible unique, par exemple isometrique 3/4 legerement surplombee
+- fixer une palette directrice courte, par exemple 8 a 16 couleurs dominantes de reference
+- fixer 3 mots interdits visuellement, par exemple photorealiste, trop detaille, trop sombre
+- fixer 3 promesses visuelles non negociables, par exemple lisible, habite, coherent
+
+Livrable concret :
+
+- un fichier court `style-bible.md` ou equivalent avec ces regles
+
+Critere de sortie :
+
+- vous pouvez decrire le rendu cible en 5 lignes sans hesiter
+
+Pourquoi c'est en premier :
+
+- si ce cadre n'existe pas, tout le reste va diverger et vous ne saurez pas si un rendu est mauvais ou juste different
+
+### Ordre 2. Construire le studio socle vide
+
+Actions :
+
+- generer seulement 2 variantes du studio vide, pas 20
+- viser une version jour et une version plus chaude ou soir
+- garder la meme camera, la meme echelle et la meme composition generale
+- faire une revue manuelle stricte et n'en retenir qu'une ou deux
+- geler ces bases comme references et arreter de les regenerer
+
+Livrable concret :
+
+- `studio_base_day`
+- `studio_base_warm`
+
+Critere de sortie :
+
+- le fond seul donne deja l'impression d'un vrai lieu de travail, meme sans objets secondaires
+
+Regle importante :
+
+- tant que ces bases ne sont pas stables, il est interdit de travailler les petits objets
+
+### Cas pratique. Si vous avez deja un bon studio socle
+
+Si vous avez deja un `studio_base_day` acceptable ou une base suffisamment solide pour servir de reference, il ne faut pas rester bloque sur l'ordre 2.
+
+Dans ce cas, considerez l'ordre 2 comme provisoirement valide et passez directement a l'ordre 3.
+
+La seule condition est la suivante :
+
+- le socle existant doit etre assez bon pour supporter l'ajout de modules sans que la coherence globale saute immediatement
+
+Si cette condition est remplie, l'ordre reel devient :
+
+1. figer officiellement le studio socle actuel comme reference de travail
+2. definir la liste minimale de modules prioritaires
+3. produire un seul module pilote
+4. ecrire la checklist de normalisation a partir de ce module pilote
+5. seulement ensuite etendre la bibliotheque
+
+Autrement dit :
+
+- si le fond est deja bon, il faut arreter de perfectionner le fond et deplacer l'effort vers les modules et la normalisation
+
+### Ordre 3. Definir la liste minimale de modules prioritaires
+
+Actions :
+
+- choisir seulement 5 ou 6 modules qui apportent immediatement de la vie percue
+- supprimer tout module trop petit ou trop abstrait
+- ecrire pour chaque module sa fonction visuelle dans la scene
+
+Liste de depart recommandee :
+
+- bureau de travail complet
+- coin cafe compact
+- plante decorative
+- rangement ou etagere
+- deco murale
+- source lumineuse decorative
+
+Livrable concret :
+
+- un tableau simple avec `module`, `role visuel`, `taille relative`, `priorite`
+
+Critere de sortie :
+
+- chaque module choisi change clairement la lecture du studio si on l'ajoute ou si on le retire
+
+### Ordre 4. Produire un seul module pilote de bout en bout
+
+Actions :
+
+- prendre le module le plus rentable visuellement, en general `bureau de travail complet`
+- generer plusieurs essais bruts uniquement pour ce module
+- choisir 1 sortie acceptable
+- normaliser cette sortie
+- tester son integration sur le studio socle
+
+Livrable concret :
+
+- 1 module pilote brut
+- 1 module pilote normalise
+- 1 composition test dans le studio
+
+Critere de sortie :
+
+- vous avez prouve qu'un module peut etre genere, nettoye, stocke et compose sans casser la coherence
+
+Pourquoi c'est critique :
+
+- il ne faut pas industrialiser une pipeline que vous n'avez pas encore validee sur un exemple reel
+
+### Ordre 5. Construire la couche de normalisation avant de faire du volume
+
+Actions :
+
+- definir les operations minimales de post-traitement
+- recadrer le sujet
+- recentrer le module
+- harmoniser la taille apparente
+- nettoyer le fond ou le rendre compatible avec la composition
+- verifier manuellement la lisibilite a la taille finale
+
+Livrable concret :
+
+- une checklist de normalisation toujours identique
+- un dossier ou une convention separee entre `raw` et `approved`
+
+Critere de sortie :
+
+- deux modules issus de generations differentes paraissent appartenir au meme monde apres normalisation
+
+Regle importante :
+
+- si la normalisation n'est pas definie, il ne faut pas lancer de batch massif
+
+### Ordre 6. Etendre progressivement la bibliotheque de modules
+
+Actions :
+
+- produire ensuite les autres modules prioritaires un par un
+- limiter chaque module a quelques variantes utiles
+- nommer et classer immediatement les sorties gardees
+- jeter sans hesitation les variantes moyennes
+
+Cadence recommandee :
+
+- 1 module stabilise avant de passer au suivant
+- puis 2 a 3 variantes d'etat maximum par module
+
+Livrable concret :
+
+- une petite bibliotheque locale de modules approuves
+
+Critere de sortie :
+
+- vous pouvez composer une scene convaincante avec repetition legere, sans impression de copier-coller grossier
+
+### Ordre 7. Ajouter les variantes d'etat de vie
+
+Actions :
+
+- enrichir seulement les modules deja stables
+- faire varier l'etat, pas la structure
+- introduire de petites differences visibles mais sobres
+
+Exemples :
+
+- ecran allume ou eteint
+- tasse presente ou absente
+- bureau range ou legerement encombre
+- plante petite ou moyenne
+- affiche A ou B
+
+Livrable concret :
+
+- 2 ou 3 etats par module important
+
+Critere de sortie :
+
+- le studio semble vivant par variation d'etat, sans perdre sa coherence structurelle
+
+### Ordre 8. Composer 3 scenes finales de reference
+
+Actions :
+
+- composer une scene calme
+- composer une scene normale
+- composer une scene un peu plus chargee
+- mesurer visuellement si la scene devient trop vide ou trop brouillonne
+- noter les modules qui manquent encore
+
+Livrable concret :
+
+- 3 compositions finales de reference
+
+Critere de sortie :
+
+- vous avez une plage de densite visuelle maitrisable sans regeneration complete du decor
+
+---
+
+## Ce que vous devez faire cette semaine, dans l'ordre
+
+Si vous voulez un ordre immediat, faites uniquement ceci :
+
+### Jour 1
+
+- si la bible visuelle n'est pas terminee, la finaliser
+- figer officiellement le meilleur studio socle deja existant
+- lui donner un nom de reference stable
+
+### Jour 2
+
+- lister 5 modules prioritaires maximum
+- choisir le module pilote
+- definir son role exact dans la scene
+
+### Jour 3
+
+- generer seulement le module pilote
+- faire 3 a 8 essais, pas plus
+- choisir 1 rendu gardable
+
+### Jour 4
+
+- normaliser ce module pilote
+- l'integrer dans le studio socle
+- verifier si l'echelle, la lisibilite et la coherence tiennent
+
+### Jour 5
+
+- ecrire la checklist de normalisation definitive
+- creer l'organisation de bibliotheque locale des sorties retenues
+
+### Jour 6
+
+- produire le deuxieme module
+- repasser exactement par la meme pipeline
+- verifier que le processus est repetable
+
+### Jour 7
+
+- produire le troisieme module si le deuxieme a confirme la repetabilite
+- sinon corriger la normalisation ou le cadrage avant d'elargir
+
+---
+
+## Regles de priorisation pour ne pas se disperser
+
+Quand vous hésitez entre plusieurs choses a faire, appliquez cet ordre de priorite :
+
+1. corriger ce qui casse la coherence globale
+2. corriger ce qui empeche la reutilisation d'un asset
+3. stabiliser un module deja important visuellement
+4. ajouter une variante d'etat
+5. seulement ensuite ajouter un nouveau module
+
+Autrement dit :
+
+- coherence avant richesse
+- reutilisation avant nouveaute
+- pipeline avant inspiration
+
+---
+
+## Definition de termine pour chaque bloc
+
+Une etape est terminee seulement si elle remplit la condition suivante :
+
+- `style-bible` : les regles visuelles sont assez precises pour rejeter un mauvais rendu objectivement
+- `studio socle` : le fond peut etre reutilise tel quel dans plusieurs essais
+- `module pilote` : il passe de generation a composition sans correction ad hoc imprenable
+- `normalisation` : le meme protocole fonctionne sur au moins 2 modules differents
+- `bibliotheque` : les assets gardes sont nommes, ranges et selectionnables sans relecture totale
+- `scene finale` : la composition semble vivante sans regeneration complete
+
+Si une etape n'atteint pas ce niveau, elle n'est pas finie, meme si elle a produit de belles images.
+
+---
+
 ## Risques principaux
 
 ## Risque 1. Le studio devient trop statique

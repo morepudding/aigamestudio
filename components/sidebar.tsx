@@ -48,6 +48,7 @@ const moodHints: Record<string, { hint: string; intensity: "low" | "medium" | "h
 
 const navLinks = [
   { href: "/", label: "Accueil", icon: Home },
+  { href: "/review-assets", label: "Review Assets", icon: Sparkles },
   { href: "/projects", label: "Cours", icon: GraduationCap },
   { href: "/collaborateur", label: "Collaborateurs", icon: Users },
   { href: "/chat", label: "Chat", icon: MessageCircle },
@@ -57,6 +58,7 @@ const navLinks = [
 // Mobile bottom nav
 const mobileNavLinks = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/review-assets", label: "Review", icon: Sparkles },
   { href: "/projects", label: "Cours", icon: GraduationCap },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/collaborateur", label: "Équipe", icon: Users },

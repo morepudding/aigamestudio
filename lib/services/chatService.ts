@@ -445,24 +445,27 @@ export async function canAgentSend(conversationId: string): Promise<boolean> {
 }
 
 export async function getUnreadCount(): Promise<number> {
-  // Conversations waiting on the user because the last message came from the agent.
-  const { data: conversations, error } = await supabase
-    .from("conversations")
-    .select("id, metadata, last_message_at")
-    .eq("awaiting_user_reply", true);
+  try {
+    // Conversations waiting on the user because the last message came from the agent.
+    const { data: conversations, error } = await supabase
+      .from("conversations")
+      .select("id, metadata, last_message_at")
+      .eq("awaiting_user_reply", true);
 
-  if (error || !conversations) return 0;
+    if (error || !conversations) return 0;
 
-  // Filtrer les conversations où le dernier message est plus récent que la dernière lecture
-  const unreadConversations = conversations.filter(conv => {
-    const metadata = conv.metadata || {};
-    const lastReadAt = metadata.lastReadAt;
-    
-    // Si jamais lu OU si le dernier message est plus récent que la dernière lecture
-    return !lastReadAt || conv.last_message_at > lastReadAt;
-  });
+    // Filter conversations where the last agent message is newer than the last read timestamp.
+    const unreadConversations = conversations.filter((conv) => {
+      const metadata = conv.metadata || {};
+      const lastReadAt = metadata.lastReadAt;
+      return !lastReadAt || conv.last_message_at > lastReadAt;
+    });
 
-  return unreadConversations.length;
+    return unreadConversations.length;
+  } catch (error) {
+    console.error("Failed to get unread count:", error);
+    return 0;
+  }
 }
 
 const replyTemplates: Record<string, string[]> = {

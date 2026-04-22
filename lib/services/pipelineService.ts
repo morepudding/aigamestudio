@@ -249,6 +249,21 @@ export async function deleteTask(taskId: string): Promise<void> {
   }
 }
 
+export async function deleteTasksByProjectPhase(
+  projectId: string,
+  phase: ProjectPhase
+): Promise<void> {
+  const { error } = await supabase
+    .from("pipeline_tasks")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("project_phase", phase);
+
+  if (error) {
+    throw new Error(`Failed to delete project tasks: ${error.message}`);
+  }
+}
+
 export async function createExecution(
   execution: Omit<TaskExecution, "id" | "createdAt">
 ): Promise<TaskExecution> {

@@ -15,10 +15,16 @@ import {
   ChevronDown,
   ChevronRight,
   Users,
+  Bot,
+  TriangleAlert,
+  GitBranch,
 } from "lucide-react";
+import { getLatestPlanningRun } from "@/lib/services/backlogPlanningService";
 import { getTasksByWave, getPipelineProgress } from "@/lib/services/pipelineService";
 import type { Wave, PipelineTask } from "@/lib/types/task";
+import type { BacklogPlanningWave, PipelinePlanningRun } from "@/lib/types/planning";
 import type { WaveReview } from "@/lib/services/waveReviewService";
+import { normalizeRepoPath } from "@/lib/utils";
 import ProgressBar from "./ProgressBar";
 import TaskReview from "./TaskReview";
 import WaveReviewPanel from "./WaveReviewPanel";
@@ -47,6 +53,23 @@ interface ExecutionStatus {
   durationMs?: number;
   errorMessage?: string;
 }
+
+interface PlanningTaskMeta {
+  notes: string | null;
+  contextFiles: string[];
+}
+
+interface PlanningBannerProps {
+  run: PipelinePlanningRun | null;
+  generating: boolean;
+}
+
+const REDUNDANT_PLANNING_WARNING_PATTERNS = [
+  /engine not yet defined/i,
+  /assuming godot/i,
+  /platform targets not specified/i,
+  /defaulting to web export/i,
+];
 
 // ── Simplified status mapping ─────────────────────────────────────────────────
 
@@ -79,6 +102,137 @@ const SIMPLE_STYLE: Record<SimpleStatus, string> = {
   done: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
   error: "text-red-400 bg-red-500/10 border-red-500/20",
 };
+
+function formatPlanningDuration(durationMs: number | null): string | null {
+  if (durationMs == null || Number.isNaN(durationMs)) return null;
+  if (durationMs < 1000) return `${durationMs} ms`;
+  return `${(durationMs / 1000).toFixed(1)} s`;
+}
+
+function getPlanningTaskMeta(
+  task: PipelineTask,
+  planningWave: BacklogPlanningWave | null | undefined
+): PlanningTaskMeta | null {
+  if (!planningWave) return null;
+
+  const normalizedTaskPath = normalizeRepoPath(task.deliverablePath);
+  const candidate = planningWave.tasks.find((planningTask) => {
+    if (task.backlogRef && planningTask.backlog_ref === task.backlogRef) {
+      return true;
+    }
+
+    if (normalizedTaskPath && planningTask.deliverable_path === normalizedTaskPath) {
+      return true;
+    }
+
+    return planningTask.title.trim().toLowerCase() === task.title.trim().toLowerCase();
+  });
+
+  if (!candidate) return null;
+
+  return {
+    notes: candidate.planning_notes,
+    contextFiles: candidate.context_files,
+  };
+}
+
+function PlanningBanner({ run, generating }: PlanningBannerProps) {
+  if (!generating && !run) return null;
+
+  const planningSummary = run?.normalizedOutput?.planningSummary?.trim() || null;
+  const warnings = (run?.warnings ?? []).filter(
+    (warning) => !REDUNDANT_PLANNING_WARNING_PATTERNS.some((pattern) => pattern.test(warning))
+  );
+  const waveCount = run?.normalizedOutput?.waves.length ?? 0;
+  const durationLabel = formatPlanningDuration(run?.durationMs ?? null);
+  const tokenLabel = run?.tokenUsage != null ? `${run.tokenUsage.toLocaleString()} tokens` : null;
+
+  return (
+    <div className="rounded-2xl border border-cyan-400/20 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),rgba(8,47,73,0.22)_42%,rgba(8,47,73,0.08)_100%)] p-4 sm:p-5 space-y-3 shadow-[0_18px_60px_rgba(6,182,212,0.12)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-cyan-200">
+            {generating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Bot className="w-4 h-4" />
+            )}
+            <p className="text-sm font-semibold">
+              {generating ? "Planification IA en cours" : "Planification IA"}
+            </p>
+          </div>
+          <p className="text-xs text-cyan-100/75">
+            {generating
+              ? "Analyse backlog, recentrage du scope arcade web, découpage des waves et validation des dépendances."
+              : waveCount > 0
+              ? `${waveCount} wave(s) préparée(s)${run?.fallbackUsed ? " avec fallback" : ""}.`
+              : run?.fallbackUsed
+              ? "Le run CrewAI a échoué et la génération locale a pris le relais."
+              : "Dernier run de planification enregistré."}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
+            <GitBranch className="w-3 h-3" />
+            CrewAI
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">
+            Web only
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">
+            Scope arcade
+          </span>
+          {run?.fallbackUsed && !generating && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-500/10 px-2.5 py-1 text-amber-200">
+              <TriangleAlert className="w-3 h-3" />
+              Fallback actif
+            </span>
+          )}
+          {durationLabel && !generating && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/65">
+              {durationLabel}
+            </span>
+          )}
+          {tokenLabel && !generating && (
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/65">
+              {tokenLabel}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {!generating && (
+        <div className="grid gap-2 text-[11px] text-white/72 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-black/15 px-3 py-2">
+            Boucle de jeu simple, lisible et jouable vite
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/15 px-3 py-2">
+            UI nette et repo structure pour sortir un vrai build
+          </div>
+          <div className="rounded-xl border border-white/10 bg-black/15 px-3 py-2">
+            Integration VN et postMessage des la planification
+          </div>
+        </div>
+      )}
+
+      {planningSummary && !generating && (
+        <p className="text-sm text-white/80 leading-relaxed">{planningSummary}</p>
+      )}
+
+      {warnings.length > 0 && !generating && (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-500/8 px-3 py-3 space-y-1.5">
+          <p className="text-xs font-semibold text-amber-100">Warnings de planification</p>
+          {warnings.map((warning) => (
+            <p key={warning} className="text-xs text-amber-100/80">
+              {warning}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── AgentPicker ───────────────────────────────────────────────────────────────
 
@@ -206,6 +360,7 @@ function DevTaskRow({
   task,
   agents,
   executionStatus,
+  planningMeta,
   onAssign,
   onReview,
   onExecute,
@@ -214,6 +369,7 @@ function DevTaskRow({
   task: PipelineTask;
   agents: Agent[];
   executionStatus?: ExecutionStatus;
+  planningMeta?: PlanningTaskMeta | null;
   onAssign: (taskId: string, slug: string | null) => Promise<void>;
   onReview: (task: PipelineTask) => void;
   onExecute: (task: PipelineTask) => void;
@@ -292,6 +448,37 @@ function DevTaskRow({
           <p className="text-xs text-white/40 leading-relaxed line-clamp-2">
             {task.description}
           </p>
+        )}
+
+        {planningMeta && (
+          <div className="space-y-2 rounded-lg border border-cyan-500/15 bg-cyan-500/6 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+                <Bot className="w-3 h-3" />
+                Proposée par CrewAI
+              </span>
+              {task.backlogRef && (
+                <span className="text-[10px] font-mono text-cyan-100/60">{task.backlogRef}</span>
+              )}
+            </div>
+
+            {planningMeta.notes && (
+              <p className="text-xs text-cyan-50/80 leading-relaxed">{planningMeta.notes}</p>
+            )}
+
+            {planningMeta.contextFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {planningMeta.contextFiles.map((filePath) => (
+                  <span
+                    key={filePath}
+                    className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-mono text-white/55"
+                  >
+                    {filePath}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Footer: assignee + actions */}
@@ -448,6 +635,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const [autoAssigning, setAutoAssigning] = useState(false);
   const [runningAll, setRunningAll] = useState(false);
   const [reviewTask, setReviewTask] = useState<PipelineTask | null>(null);
+  const [planningRun, setPlanningRun] = useState<PipelinePlanningRun | null>(null);
   const [waveReviews, setWaveReviews] = useState<Map<number, WaveReview>>(new Map());
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionInfo, setActionInfo] = useState<string | null>(null);
@@ -509,14 +697,16 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [wavesData, progressData, agentsRes] = await Promise.all([
+      const [wavesData, progressData, agentsRes, latestPlanningRun] = await Promise.all([
         getTasksByWave(projectId, "in-dev"),
         getPipelineProgress(projectId, "in-dev"),
         fetch("/api/agents").then((r) => r.json()),
+        getLatestPlanningRun(projectId),
       ]);
       setWaves(wavesData);
       setProgress(progressData);
       setAgents(agentsRes ?? []);
+      setPlanningRun(latestPlanningRun);
 
       // Load wave reviews for completed waves
       const completedWaveNumbers = wavesData
@@ -578,7 +768,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
     }
   };
 
-  const handleCatchUp = async () => {
+  const handleReplayBacklog = async () => {
     setGenerating(true);
     setActionError(null);
     setActionInfo(null);
@@ -586,8 +776,9 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
       const res = await fetch(`/api/pipeline/${projectId}/catch-up`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? "Impossible de générer la suite du développement");
+        throw new Error(data?.error ?? "Impossible de relancer le backlog de développement");
       }
+      setActionInfo("Backlog relancé. Les waves ont été recalculées depuis le repo.");
       await load();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -862,6 +1053,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
     return (
       <div className="space-y-4">
         <BacklogSummary projectId={projectId} refreshKey={progress.total} />
+        <PlanningBanner run={planningRun} generating={generating} />
         <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center space-y-4">
           <Layers className="w-8 h-8 text-white/20 mx-auto" />
           <div className="space-y-1">
@@ -894,6 +1086,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
     <>
       <div className="space-y-4">
         <BacklogSummary projectId={projectId} refreshKey={progress.total} />
+        <PlanningBanner run={planningRun} generating={generating} />
 
         <div className="rounded-2xl border border-white/8 bg-white/2 backdrop-blur-md p-6 space-y-6">
           {/* Header */}
@@ -925,7 +1118,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
                 {runningAll ? "En cours…" : "Lancer tout"}
               </button>
               <button
-                onClick={handleCatchUp}
+                onClick={handleReplayBacklog}
                 disabled={generating || runningAll}
                 className="flex items-center gap-1.5 text-xs font-semibold text-white/40 hover:text-white/70 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"
               >
@@ -934,7 +1127,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
                 ) : (
                   <Zap className="w-3.5 h-3.5" />
                 )}
-                Catch-up
+                Relancer backlog
               </button>
               <button
                 onClick={load}
@@ -977,6 +1170,9 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
             {waves.map((wave, i) => {
               const waveTitle =
                 wave.number === 0 ? "Pipeline de Conception" : `Wave ${wave.number}`;
+              const planningWave = planningRun?.normalizedOutput?.waves.find(
+                (candidate) => candidate.number === wave.number
+              );
               const showCheckpoint = wave.allCompleted && wave.number > 0;
               return (
                 <div key={wave.number} className={i > 0 ? "pt-6 space-y-2" : "space-y-2"}>
@@ -994,6 +1190,23 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
                       <p className="text-xs text-white/40">
                         {wave.tasks.length} tâche{wave.tasks.length > 1 ? "s" : ""}
                       </p>
+                      {planningWave?.goal && (
+                        <p className="text-xs text-cyan-100/75 mt-1">{planningWave.goal}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        {planningWave && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+                            <Bot className="w-3 h-3" />
+                            Source CrewAI
+                          </span>
+                        )}
+                        {planningRun?.fallbackUsed && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                            <TriangleAlert className="w-3 h-3" />
+                            Fallback utilisé
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1005,6 +1218,7 @@ export default function DevPipelineView({ projectId }: DevPipelineViewProps) {
                         task={task}
                         agents={agents}
                         executionStatus={executionStatuses.get(task.id)}
+                        planningMeta={getPlanningTaskMeta(task, planningWave)}
                         onAssign={handleAssign}
                         onReview={setReviewTask}
                         onExecute={handleExecute}

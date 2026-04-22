@@ -10,7 +10,13 @@ export type OfficeAssetType =
   | "cabinet_storage"
   | "trash_can"
   | "water_fountain"
-  | "coffee_machine";
+  | "coffee_machine"
+  | "wall_poster"
+  | "wall_shelf"
+  | "wall_neon_sign"
+  | "desk_lamp"
+  | "floor_lamp"
+  | "neon_light";
 
 export type AssetVariant = 1 | 2 | 3 | 4;
 

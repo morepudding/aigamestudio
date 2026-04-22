@@ -17,7 +17,8 @@ const CHECKPOINT = process.env.COMFYUI_CHECKPOINT ?? "Realistic_Vision_V6.0_NV_B
 const PIXEL_CHECKPOINT = process.env.COMFYUI_PIXEL_CHECKPOINT ?? "pixnite15PurePixel_v10.safetensors";
 const VAE_NAME = process.env.COMFYUI_VAE ?? "vae-ft-mse-840000-ema-pruned.safetensors";
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLL_ATTEMPTS = 90; // 3 min max
+const GENERATION_TIMEOUT_MS = 300_000;
+const MAX_POLL_ATTEMPTS = GENERATION_TIMEOUT_MS / POLL_INTERVAL_MS;
 
 const DEFAULT_NEGATIVE =
   "ugly, deformed face, extra fingers, bad anatomy, blurry, low quality, watermark, text, cartoon, anime, CGI, 3D render, painting, illustration, nsfw, nudity";
@@ -233,7 +234,7 @@ async function waitForResult(promptId: string): Promise<{ filename: string; subf
     }
   }
 
-  throw new Error("ComfyUI job timed out after 3 minutes");
+  throw new Error(`ComfyUI job timed out after ${GENERATION_TIMEOUT_MS / 60000} minutes`);
 }
 
 async function fetchOutputImage(filename: string, subfolder: string): Promise<ComfyImageResult> {
@@ -278,7 +279,7 @@ async function sdTxt2Img(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
+    signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -315,7 +316,7 @@ async function sdImg2Img(opts: ComfyImg2ImgOptions): Promise<ComfyImageResult> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(180_000),
+    signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
   });
 
   if (!res.ok) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useEffect, useMemo } from "react";
 import { Stage, Layer, Image as KImage, Rect, Text } from "react-konva";
 import { useChatPanel } from "@/components/chat/ChatPanelProvider";
@@ -27,8 +28,6 @@ import {
   Droplets,
   Sparkles,
   X,
-  ChevronLeft,
-  ChevronRight,
   Menu,
   ChevronDown,
   ChevronUp,
@@ -39,6 +38,7 @@ import {
 import { useOfficeNav } from "@/components/sidebar";
 import {
   generateAndLoadAssetWithUrl,
+  fetchAssetVariants,
   fetchOrGenerateVariant,
   loadImage,
   type OfficeAssetType,
@@ -48,9 +48,13 @@ import {
 
 const FALLBACK_CANVAS_W = 1280;
 const FALLBACK_CANVAS_H = 720;
-const DEFAULT_ASSET_SIZE = 220;
+const MAX_ACTIVE_AGENTS = 4;
+const AGENT_ROTATION_INTERVAL_MS = 8000;
 
-type PlaceableOfficeAssetType = Exclude<OfficeAssetType, "studio_empty">;
+type PlaceableOfficeAssetType = Exclude<
+  OfficeAssetType,
+  "studio_empty" | "wall_poster" | "wall_shelf" | "wall_neon_sign" | "desk_lamp" | "floor_lamp" | "neon_light"
+>;
 
 const ASSET_LABELS: Record<OfficeAssetType, string> = {
   studio_empty: "Studio",
@@ -63,6 +67,12 @@ const ASSET_LABELS: Record<OfficeAssetType, string> = {
   trash_can: "Poubelle",
   water_fountain: "Fontaine a eau",
   coffee_machine: "Machine a cafe",
+  wall_poster: "Poster mural",
+  wall_shelf: "Etagere murale",
+  wall_neon_sign: "Neon mural",
+  desk_lamp: "Lampe de bureau",
+  floor_lamp: "Lampadaire",
+  neon_light: "Lumiere neon",
 };
 
 const ASSET_PLACEMENT: Record<PlaceableOfficeAssetType, { idPrefix: string; baseSize: number }> = {
@@ -92,7 +102,9 @@ type OfficeAssetInstance = {
 type StudioLayoutPayload = {
   canvas: { width: number; height: number };
   studioAssetUrl: string;
+  officeAgentScale?: number;
   assets: Array<{
+    id?: string;
     type: OfficeAssetType;
     sourceUrl: string;
     x: number;
@@ -117,10 +129,12 @@ type Agent = {
 };
 
 type StudioConfigResponse = {
-  defaultAssets?: Partial<Record<string, string>>;
-  variants?: AssetVariantsMap;
   layout?: StudioLayoutPayload | null;
 };
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 const DESK_POSITIONS: { x: number; y: number }[] = [
   { x: 14, y: 36 },
@@ -140,6 +154,7 @@ type CatalogCategory = {
   label: string;
   icon: React.ReactNode;
   items: PlaceableOfficeAssetType[];
+  description?: string;
 };
 
 const CATALOG_CATEGORIES: CatalogCategory[] = [
@@ -147,19 +162,29 @@ const CATALOG_CATEGORIES: CatalogCategory[] = [
     id: "mobilier",
     label: "Mobilier",
     icon: <Armchair className="w-3.5 h-3.5" />,
-    items: ["desk_workstation", "chair_office", "cabinet_storage"],
+    description: "Module pilote valide",
+    items: ["desk_workstation"],
   },
   {
-    id: "deco",
-    label: "Déco",
+    id: "social",
+    label: "Coin cafe compact",
+    icon: <Coffee className="w-3.5 h-3.5" />,
+    description: "Module prioritaire 2",
+    items: ["coffee_machine", "water_fountain"],
+  },
+  {
+    id: "vegetal",
+    label: "Plante decorative",
     icon: <Leaf className="w-3.5 h-3.5" />,
+    description: "Module prioritaire 3",
     items: ["plant_green_1", "plant_green_2", "plant_green_3"],
   },
   {
-    id: "equipements",
-    label: "Équipements",
-    icon: <Coffee className="w-3.5 h-3.5" />,
-    items: ["trash_can", "water_fountain", "coffee_machine"],
+    id: "rangement",
+    label: "Rangement ou etagere",
+    icon: <Archive className="w-3.5 h-3.5" />,
+    description: "Module prioritaire 4",
+    items: ["cabinet_storage"],
   },
 ];
 
@@ -224,8 +249,6 @@ function CatalogItem({
 // ── SelectedAgentPanel — shown below canvas when agent is selected ───────────
 function SelectedAgentPanel({
   agent,
-  size,
-  onSize,
   hairOptions,
   hairColorOptions,
   hairSaving,
@@ -234,8 +257,6 @@ function SelectedAgentPanel({
   onClose,
 }: {
   agent: Agent;
-  size: number;
-  onSize: (mult: number) => void;
   hairOptions: { value: string; label: string }[];
   hairColorOptions: { value: string; label: string; color: string }[];
   hairSaving: boolean;
@@ -249,43 +270,11 @@ function SelectedAgentPanel({
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-white/70">{agent.name}</span>
           <span className="text-[10px] text-white/30">{agent.role}</span>
-          <span className="text-[10px] text-white/30">Taille: {(size * 100).toFixed(0)}%</span>
+          <span className="text-[10px] text-white/30">{agent.department}</span>
         </div>
         <button onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
           <X className="w-3.5 h-3.5" />
         </button>
-      </div>
-
-      <div className="px-3 py-2 flex items-center gap-3">
-        {/* Size controls */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onSize(0.85)}
-            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
-            title="Réduire"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onSize(1.15)}
-            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
-            title="Agrandir"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onSize(1.0)}
-            className="p-1.5 rounded-lg bg-white/5 border border-white/8 text-white/50 hover:text-white hover:bg-white/10 transition-all"
-            title="Taille normale"
-          >
-            <span className="text-[10px] font-bold">100%</span>
-          </button>
-        </div>
-
-        {/* Department info */}
-        <div className="flex items-center gap-1 border-l border-white/8 pl-3">
-          <span className="text-[10px] text-white/40">{agent.department}</span>
-        </div>
       </div>
 
       <div className="px-3 py-3 border-t border-white/8 space-y-2">
@@ -502,14 +491,14 @@ export function PixelArtOffice() {
 
   const [studioImage, setStudioImage] = useState<HTMLImageElement | null>(null);
   const [studioAssetUrl, setStudioAssetUrl] = useState<string | null>(null);
-  const [defaultAssetUrls, setDefaultAssetUrls] = useState<Partial<Record<OfficeAssetType, string>>>({});
   const [assetVariants, setAssetVariants] = useState<AssetVariantsMap>({});
 
   const [assets, setAssets] = useState<OfficeAssetInstance[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [changingAngleFor, setChangingAngleFor] = useState<string | null>(null);
   const [selectedAgentSlug, setSelectedAgentSlug] = useState<string | null>(null);
-  const [agentSizes, setAgentSizes] = useState<Record<string, number>>({});
+  const [officeAgentScale, setOfficeAgentScale] = useState(1);
+  const [activeAgentOffset, setActiveAgentOffset] = useState(0);
   const [savingAgentHairSlug, setSavingAgentHairSlug] = useState<string | null>(null);
 
   const [activeCategory, setActiveCategory] = useState<string>("mobilier");
@@ -522,7 +511,14 @@ export function PixelArtOffice() {
   const [pendingZoneBounds, setPendingZoneBounds] = useState<ZoneBoundsData | null>(null);
   const [isSavingZone, setIsSavingZone] = useState(false);
 
-  useEffect(() => { initializeStudio(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    void initializeStudio().catch((error) => {
+      console.error("[PixelArtOffice] initializeStudio failed:", error);
+      setStatus("error");
+      setErrorMessage(getErrorMessage(error, "Impossible d'initialiser le studio."));
+    });
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, []);
 
   useEffect(() => {
     fetch("/api/agents")
@@ -566,6 +562,31 @@ export function PixelArtOffice() {
   const stageH = containerSize.height;
   const selectedAsset = assets.find((a) => a.id === selectedAssetId) ?? null;
   const hasMissingSprites = agents.some((agent) => !agent.lpc_sprite_url);
+  const agentsWithSprites = useMemo(() => agents.filter((agent) => agent.lpc_sprite_url), [agents]);
+  const activeAgents = useMemo(() => {
+    if (agentsWithSprites.length <= MAX_ACTIVE_AGENTS) {
+      return agentsWithSprites;
+    }
+
+    return Array.from({ length: MAX_ACTIVE_AGENTS }, (_, index) => {
+      const agentIndex = (activeAgentOffset + index) % agentsWithSprites.length;
+      return agentsWithSprites[agentIndex];
+    });
+  }, [activeAgentOffset, agentsWithSprites]);
+
+  useEffect(() => {
+    if (agentsWithSprites.length <= MAX_ACTIVE_AGENTS) {
+      setActiveAgentOffset(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveAgentOffset((current) => (current + 1) % agentsWithSprites.length);
+    }, AGENT_ROTATION_INTERVAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [agentsWithSprites]);
+
   const displayZones = useMemo<OfficeZone[]>(() => {
     if (!pendingZoneBounds) {
       return zones;
@@ -591,11 +612,6 @@ export function PixelArtOffice() {
       },
     ];
   }, [pendingZoneBounds, zones]);
-
-  const PLACEABLE_ASSET_TYPES: PlaceableOfficeAssetType[] = [
-    "desk_workstation", "chair_office", "plant_green_1", "plant_green_2",
-    "plant_green_3", "cabinet_storage", "trash_can", "water_fountain", "coffee_machine",
-  ];
 
   const generateAllAssets = async () => {
     setGeneratingAllAssets(true);
@@ -626,22 +642,26 @@ export function PixelArtOffice() {
     setAssetProgress("");
   };
 
-  const syncAllAssets = async () => {
-    setAssetProgress("Sync…");
-    setGeneratingAllAssets(true);
+  const syncAllAssets = async (showFeedback = true) => {
+    if (showFeedback) {
+      setAssetProgress("Sync…");
+      setGeneratingAllAssets(true);
+    }
+
     await Promise.all(
       PLACEABLE_ASSET_TYPES.map(async (asset) => {
-        const res = await fetch(`/api/ai/generate-office-asset?asset=${asset}`);
-        const data = await res.json();
-        if (!data.variants) return;
+        const data = await fetchAssetVariants(asset);
         for (const v of [1, 2, 3, 4] as AssetVariant[]) {
-          const url = data.variants[v];
+          const url = data[v];
           if (url) persistVariant(asset, v, url);
         }
       })
     );
-    setGeneratingAllAssets(false);
-    setAssetProgress("");
+
+    if (showFeedback) {
+      setGeneratingAllAssets(false);
+      setAssetProgress("");
+    }
   };
 
   const generateAllSprites = async () => {
@@ -770,12 +790,6 @@ export function PixelArtOffice() {
 
   // ── Persist variant URL ────────────────────────────────────────────────────
   const persistVariant = (assetType: OfficeAssetType, variant: AssetVariant, url: string) => {
-    const stableUrl = url.split("?")[0];
-    void fetch("/api/office/studio-config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "asset-variant", assetType, variant, url: stableUrl }),
-    });
     setAssetVariants((prev) => ({
       ...prev,
       [assetType]: { ...prev[assetType], [variant]: url },
@@ -788,12 +802,15 @@ export function PixelArtOffice() {
     if (!bg) throw new Error("Impossible de charger le fond sauvegardé.");
     const width = layout.canvas?.width || bg.naturalWidth || FALLBACK_CANVAS_W;
     const height = layout.canvas?.height || bg.naturalHeight || FALLBACK_CANVAS_H;
+    const nextAgentScale = typeof layout.officeAgentScale === "number"
+      ? Math.max(0.5, Math.min(3, layout.officeAgentScale))
+      : 1;
     const restored = await Promise.all(
       (layout.assets ?? []).map(async (a, i) => {
         const image = await loadImage(a.sourceUrl);
         if (!image) return null;
         return {
-          id: `${a.type}-${Date.now()}-${i}`,
+          id: a.id ?? `${a.type}-${Date.now()}-${i}`,
           type: a.type,
           sourceUrl: a.sourceUrl,
           image,
@@ -806,6 +823,7 @@ export function PixelArtOffice() {
     setStudioImage(bg);
     setStudioAssetUrl(layout.studioAssetUrl);
     setCanvasSize({ width, height });
+    setOfficeAgentScale(nextAgentScale);
     setAssets(restored.filter((a): a is OfficeAssetInstance => !!a));
     setSelectedAssetId(null);
   };
@@ -817,38 +835,37 @@ export function PixelArtOffice() {
       const res = await fetch("/api/office/studio-config", { cache: "no-store" });
       const config = (await res.json()) as StudioConfigResponse;
 
-      setDefaultAssetUrls((config.defaultAssets ?? {}) as Partial<Record<OfficeAssetType, string>>);
-
-      // Cache-bust restored variant URLs
-      const ts = Date.now();
-      const busted: AssetVariantsMap = {};
-      for (const [type, map] of Object.entries(config.variants ?? {})) {
-        busted[type as OfficeAssetType] = {};
-        for (const [v, url] of Object.entries(map ?? {})) {
-          if (url) busted[type as OfficeAssetType]![Number(v) as AssetVariant] = `${(url as string).split("?")[0]}?t=${ts}`;
-        }
-      }
-      setAssetVariants(busted);
-
       if (config.layout) {
         await restoreLayout(config.layout);
+        void syncAllAssets(false);
         setStatus("ready");
         return;
       }
 
-      await loadBackground(false, config.defaultAssets ?? {});
-    } catch {
-      await loadBackground(false, {});
+      await loadBackground(false);
+      void syncAllAssets(false);
+    } catch (error) {
+      console.error("[PixelArtOffice] Falling back to generated studio:", error);
+
+      try {
+        await loadBackground(false);
+        void syncAllAssets(false);
+      } catch (fallbackError) {
+        console.error("[PixelArtOffice] loadBackground fallback failed:", fallbackError);
+        setStatus("error");
+        setErrorMessage(getErrorMessage(fallbackError, "Impossible d'initialiser le studio."));
+      }
     }
   };
 
   // ── Load/generate background ───────────────────────────────────────────────
-  const loadBackground = async (force = false, defaultsOverride?: Partial<Record<string, string>>) => {
+  const loadBackground = async (force = false) => {
     setStatus("loading");
     setGeneratingType("studio_empty");
 
     if (!force) {
-      const url = defaultsOverride?.studio_empty ?? defaultAssetUrls.studio_empty;
+      const variants = await fetchAssetVariants("studio_empty");
+      const url = variants[1];
       if (url) {
         const img = await loadImage(url);
         if (img) {
@@ -954,13 +971,14 @@ export function PixelArtOffice() {
     }));
   };
 
-  // ── Resize selected agent ──────────────────────────────────────────────────
-  const resizeSelectedAgent = (mult: number) => {
-    if (!selectedAgentSlug) return;
-    setAgentSizes((prev) => {
-      const currentSize = prev[selectedAgentSlug] || 1.0;
-      const newSize = Math.max(0.5, Math.min(3.0, currentSize * mult));
-      return { ...prev, [selectedAgentSlug]: newSize };
+  // ── Resize all visible agents globally in the office ─────────────────────
+  const resizeOfficeAgents = (mult: number) => {
+    setOfficeAgentScale((current) => {
+      if (mult === 1) {
+        return 1;
+      }
+
+      return Math.max(0.5, Math.min(3.0, current * mult));
     });
   };
 
@@ -1035,7 +1053,8 @@ export function PixelArtOffice() {
     const layout: StudioLayoutPayload = {
       canvas: { width: canvasSize.width, height: canvasSize.height },
       studioAssetUrl,
-      assets: assets.map((a) => ({ type: a.type, sourceUrl: a.sourceUrl, x: a.x, y: a.y, width: a.width, height: a.height, variant: a.variant })),
+      officeAgentScale,
+      assets: assets.map((a) => ({ id: a.id, type: a.type, sourceUrl: a.sourceUrl, x: a.x, y: a.y, width: a.width, height: a.height, variant: a.variant })),
     };
     try {
       const res = await fetch("/api/office/studio-config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "layout", layout }) });
@@ -1161,11 +1180,8 @@ export function PixelArtOffice() {
       </div>
 
       <div className="absolute inset-0 z-20 pointer-events-none">
-        {agents
-          .filter((agent) => agent.lpc_sprite_url)
-          .map((agent, index) => {
+        {activeAgents.map((agent, index) => {
             const pos = DESK_POSITIONS[index % DESK_POSITIONS.length];
-            const agentSize = agentSizes[agent.slug] || 1.0;
             const isSelected = selectedAgentSlug === agent.slug;
             const agentZones = getAgentZones(agent.slug, agent.department);
 
@@ -1185,7 +1201,7 @@ export function PixelArtOffice() {
                 initialX={pos.x / 100}
                 initialY={pos.y / 100}
                 zones={agentZones}
-                scale={agentSize}
+                scale={officeAgentScale}
                 selected={isSelected}
                 className="pointer-events-auto"
               />
@@ -1202,22 +1218,44 @@ export function PixelArtOffice() {
         <Menu className="w-4 h-4" />
       </button>
 
-      {/* ── HUD: info message (coin haut-gauche, sous le menu) ── */}
-      <div className="absolute top-14 left-3 z-30 max-w-xs">
-        <div className="text-[11px] text-white/40 bg-black/30 backdrop-blur-sm px-3 py-2 rounded-lg border border-white/10">
-          <div className="font-semibold text-white/60 mb-1">💡 Comment redimensionner :</div>
-          <div className="space-y-1">
-            <div>• <span className="text-indigo-300">Cliquez sur un collaborateur</span> pour le sélectionner</div>
-            <div>• Utilisez les boutons <span className="text-amber-300">+/-</span> pour ajuster la taille</div>
-            <div>• Cliquez sur le bureau pour désélectionner</div>
-          </div>
-        </div>
-      </div>
-
       {/* ── HUD: toolbar flottante (coin haut-droite) ── */}
-      <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+      <div className="absolute top-3 right-3 z-30 flex flex-wrap items-start justify-end gap-2 max-w-[calc(100%-4rem)]">
+        <div className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-black/55 backdrop-blur border border-white/10">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35 pr-1">
+            Agents
+          </span>
+          <button
+            onClick={() => resizeOfficeAgents(0.85)}
+            className="p-1 rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Réduire globalement les agents"
+          >
+            <ZoomOut className="w-3 h-3" />
+          </button>
+          <span className="min-w-16 text-center text-[11px] text-white/70">
+            Agents {(officeAgentScale * 100).toFixed(0)}%
+          </span>
+          <button
+            onClick={() => resizeOfficeAgents(1.15)}
+            className="p-1 rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Agrandir globalement les agents"
+          >
+            <ZoomIn className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => resizeOfficeAgents(1)}
+            className="px-1.5 py-1 rounded-md text-[10px] text-white/50 hover:text-white hover:bg-white/10 transition-all"
+            title="Taille normale"
+          >
+            100%
+          </button>
+        </div>
+
+        <div className="px-2.5 py-1.5 rounded-xl bg-black/55 backdrop-blur border border-white/10 text-[11px] text-white/60">
+          Actifs {Math.min(activeAgents.length, MAX_ACTIVE_AGENTS)}/{agentsWithSprites.length}
+        </div>
+
         {/* Zone controls */}
-        <div className="flex items-center gap-1 border-r border-white/10 pr-2">
+        <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-black/55 backdrop-blur border border-white/10">
           <button
             onClick={toggleZonesOverlay}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg backdrop-blur border text-[11px] transition-all ${
@@ -1286,12 +1324,12 @@ export function PixelArtOffice() {
         )}
         
         {saveMessage && (
-          <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-white/10">
+          <span className="text-[11px] text-emerald-400/80 flex items-center gap-1 px-2 py-1 rounded-xl bg-black/55 backdrop-blur border border-white/10">
             <Check className="w-3 h-3" /> {saveMessage}
           </span>
         )}
         {errorMessage && (
-          <span className="text-[11px] text-red-400/80 px-2 py-1 rounded-lg bg-black/50 backdrop-blur border border-red-500/20">
+          <span className="text-[11px] text-red-400/80 px-2 py-1 rounded-xl bg-black/55 backdrop-blur border border-red-500/20">
             {errorMessage}
           </span>
         )}
@@ -1299,7 +1337,7 @@ export function PixelArtOffice() {
           <button
             onClick={() => void generateAllSprites()}
             disabled={generatingSprites}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600/70 backdrop-blur border border-emerald-400/30 text-[11px] text-white hover:bg-emerald-500/70 transition-all disabled:opacity-30"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600/70 backdrop-blur border border-emerald-400/30 text-[11px] text-white hover:bg-emerald-500/70 transition-all disabled:opacity-30"
             title="Générer les sprites LPC des agents"
           >
             {generatingSprites ? (
@@ -1311,18 +1349,25 @@ export function PixelArtOffice() {
           </button>
         )}
         <button
-          onClick={() => void syncAllAssets()}
+          onClick={() => void syncAllAssets(true)}
           disabled={generatingAllAssets}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-600/70 backdrop-blur border border-sky-400/30 text-[11px] text-white hover:bg-sky-500/70 transition-all disabled:opacity-30"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-sky-600/70 backdrop-blur border border-sky-400/30 text-[11px] text-white hover:bg-sky-500/70 transition-all disabled:opacity-30"
           title="Sync — recharge les assets déjà générés depuis Supabase sans régénérer"
         >
           {generatingAllAssets && assetProgress === "Sync…" ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="text-[10px]">↻</span>}
           Sync
         </button>
+        <Link
+          href="/review-assets"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600/70 backdrop-blur border border-emerald-400/30 text-[11px] text-white hover:bg-emerald-500/70 transition-all"
+          title="Ouvrir la review dédiée raw vers approved/rejected"
+        >
+          Review
+        </Link>
         <button
           onClick={() => void generateAllAssets()}
           disabled={generatingAllAssets}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-600/70 backdrop-blur border border-violet-400/30 text-[11px] text-white hover:bg-violet-500/70 transition-all disabled:opacity-30"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-violet-600/70 backdrop-blur border border-violet-400/30 text-[11px] text-white hover:bg-violet-500/70 transition-all disabled:opacity-30"
           title="Générer tous les assets NO (txt2img) puis NE/SE/SO (img2img)"
         >
           {generatingAllAssets && assetProgress !== "Sync…" ? <Loader2 className="w-3 h-3 animate-spin" /> : <span className="text-[10px]">⬡</span>}
@@ -1331,7 +1376,7 @@ export function PixelArtOffice() {
         <button
           onClick={() => void loadBackground(true)}
           disabled={status === "loading"}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:bg-black/70 transition-all disabled:opacity-30"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-black/55 backdrop-blur border border-white/10 text-[11px] text-white/40 hover:text-white/70 hover:bg-black/70 transition-all disabled:opacity-30"
           title="Nouveau fond"
         >
           {generatingType === "studio_empty" ? (
@@ -1344,7 +1389,7 @@ export function PixelArtOffice() {
         <button
           onClick={restoreFromDb}
           disabled={status === "loading"}
-          className="p-1.5 rounded-lg bg-black/50 backdrop-blur border border-white/10 text-white/30 hover:text-white/60 hover:bg-black/70 transition-all disabled:opacity-30"
+          className="p-1.5 rounded-xl bg-black/55 backdrop-blur border border-white/10 text-white/30 hover:text-white/60 hover:bg-black/70 transition-all disabled:opacity-30"
           title="Restaurer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -1352,7 +1397,7 @@ export function PixelArtOffice() {
         <button
           onClick={saveLayout}
           disabled={!studioImage || status === "loading"}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/80 backdrop-blur border border-indigo-400/30 text-white text-[11px] font-semibold hover:bg-indigo-500/80 transition-all disabled:opacity-30"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/80 backdrop-blur border border-indigo-400/30 text-white text-[11px] font-semibold hover:bg-indigo-500/80 transition-all disabled:opacity-30"
         >
           <Save className="w-3.5 h-3.5" />
           Sauvegarder
@@ -1360,15 +1405,15 @@ export function PixelArtOffice() {
       </div>
 
       {/* ── HUD: catalogue d'assets (coin bas-gauche, collapsible) ── */}
-      <div className="absolute bottom-4 left-3 z-30 w-48 flex flex-col gap-0 rounded-2xl border border-white/10 bg-black/60 backdrop-blur-md overflow-hidden shadow-2xl">
+      <div className="absolute bottom-4 left-3 z-30 w-56 flex flex-col gap-0 rounded-2xl border border-white/10 bg-black/60 backdrop-blur-md overflow-hidden shadow-2xl">
         {/* Header / toggle */}
         <button
           onClick={() => setCatalogOpen((v) => !v)}
           className="flex items-center justify-between px-3 py-2 text-[11px] text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
         >
-          <span className="font-semibold uppercase tracking-wider">Ajouter</span>
+          <span className="font-semibold uppercase tracking-wider">Modules</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-white/25">{assets.length} obj.</span>
+            <span className="text-white/25">{assets.length} actifs</span>
             {catalogOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
           </div>
         </button>
@@ -1389,7 +1434,12 @@ export function PixelArtOffice() {
                   ].join(" ")}
                 >
                   <span className="opacity-70">{cat.icon}</span>
-                  {cat.label}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{cat.label}</span>
+                    {cat.description ? (
+                      <span className="block text-[10px] text-white/30">{cat.description}</span>
+                    ) : null}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1444,8 +1494,6 @@ export function PixelArtOffice() {
             return (
               <SelectedAgentPanel
                 agent={agent}
-                size={agentSizes[agent.slug] || 1.0}
-                onSize={resizeSelectedAgent}
                 hairOptions={hairOptions}
                 hairColorOptions={hairColorOptions}
                 hairSaving={savingAgentHairSlug === agent.slug}

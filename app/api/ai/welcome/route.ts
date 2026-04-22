@@ -3,7 +3,8 @@ import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_
 import { buildConversationCoreRules } from "@/lib/prompts/conversationCore";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
-import { normalizeConversationMessage } from "@/lib/services/conversationMessageService";
+import { normalizeConversationMessageResult } from "@/lib/services/conversationMessageService";
+import { buildMessageMetadata, buildMessageTrace } from "@/lib/services/chatMetadata";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -101,15 +102,28 @@ ${ANTI_HALLUCINATION_RULE}`;
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
   // Filter out non-Latin characters
-  message = normalizeConversationMessage(
+  const normalization = normalizeConversationMessageResult(
     message
       .replace(
         /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
         ""
       )
       .trim(),
-    { mode: "welcome" }
+    {
+      mode: "welcome",
+      agentName: name,
+      personalityPrimary,
+      personalityNuance,
+    }
+  );
+  message = normalization.message;
+
+  const messageMetadata = buildMessageMetadata(
+    buildMessageTrace("welcome", normalization.usedFallback ? "fallback" : "welcome", {
+      promptVariant: hasMemories ? "welcome-returning" : "welcome-first-contact",
+      fallbackKey: normalization.fallbackKey,
+    })
   );
 
-  return NextResponse.json({ message });
+  return NextResponse.json({ message, messageMetadata });
 }

@@ -13,6 +13,15 @@ export interface MessageGenerationTrace {
   source: MessageGenerationSource;
   scenarioId?: number | null;
   scenarioTitle?: string | null;
+  promptVariant?: string | null;
+  fallbackKey?: string | null;
+  pivotDetected?: boolean;
+  blockedTopics?: string[];
+  feedbackSignal?: {
+    hasSignal: boolean;
+    thumbsUpCount: number;
+    thumbsDownCount: number;
+  } | null;
   selectedAt: number;
 }
 
@@ -52,6 +61,15 @@ export function buildMessageTrace(
   options: {
     scenarioId?: number | null;
     scenarioTitle?: string | null;
+    promptVariant?: string | null;
+    fallbackKey?: string | null;
+    pivotDetected?: boolean;
+    blockedTopics?: string[];
+    feedbackSignal?: {
+      hasSignal: boolean;
+      thumbsUpCount: number;
+      thumbsDownCount: number;
+    } | null;
     selectedAt?: number;
   } = {}
 ): MessageGenerationTrace {
@@ -60,6 +78,11 @@ export function buildMessageTrace(
     source,
     scenarioId: options.scenarioId ?? null,
     scenarioTitle: options.scenarioTitle ?? null,
+    promptVariant: options.promptVariant ?? null,
+    fallbackKey: options.fallbackKey ?? null,
+    pivotDetected: options.pivotDetected ?? false,
+    blockedTopics: options.blockedTopics ?? [],
+    feedbackSignal: options.feedbackSignal ?? null,
     selectedAt: options.selectedAt ?? Date.now(),
   };
 }

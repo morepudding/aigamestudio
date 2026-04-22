@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProjectById } from "@/lib/services/projectService";
-import { generateNextDevWave, regenerateProjectDocsFromRepo } from "@/lib/services/producerService";
+import { getTasksByProject, deleteTasksByProjectPhase } from "@/lib/services/pipelineService";
+import { generateDevWaves, regenerateProjectDocsFromRepo } from "@/lib/services/producerService";
 
 // POST /api/pipeline/[projectId]/catch-up
-// Regenerates placeholder project docs from the live GitHub repo when needed,
-// then creates the next in-dev wave once all current tasks are completed.
+// Refreshes project docs from the live GitHub repo, clears current dev waves,
+// then rebuilds the dev backlog from scratch so planning can be re-run.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -24,12 +25,29 @@ export async function POST(
   }
 
   try {
+    const existingTasks = await getTasksByProject(projectId, "in-dev");
+    const hasRunningTasks = existingTasks.some(
+      (task) => task.status === "in-progress" || task.status === "retrying"
+    );
+
+    if (hasRunningTasks) {
+      return NextResponse.json(
+        {
+          error:
+            "Impossible de relancer le backlog pendant qu'une tâche de développement est en cours.",
+        },
+        { status: 409 }
+      );
+    }
+
     const docs = await regenerateProjectDocsFromRepo(projectId, project);
-    const tasks = await generateNextDevWave(projectId, project);
+    await deleteTasksByProjectPhase(projectId, "in-dev");
+    const tasks = await generateDevWaves(projectId, project);
 
     return NextResponse.json(
       {
         phase: "in-dev",
+        replanned: true,
         docsUpdated: true,
         nextWaveNumber: tasks[0]?.waveNumber ?? null,
         tasksCreated: tasks.length,
@@ -41,7 +59,7 @@ export async function POST(
   } catch (err) {
     console.error("[pipeline/catch-up] Error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to run catch-up pipeline" },
+      { error: err instanceof Error ? err.message : "Failed to replan dev backlog" },
       { status: 500 }
     );
   }

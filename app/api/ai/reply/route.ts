@@ -9,7 +9,8 @@ import { topicReservoirService } from "@/lib/services/topicReservoirService";
 import { scenarioHistoryService } from "@/lib/services/scenarioHistoryService";
 import { buildMessageMetadata, buildMessageTrace } from "@/lib/services/chatMetadata";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { getUserSignalLevel, normalizeConversationMessage, userTriggeredProfessionalTopic } from "@/lib/services/conversationMessageService";
+import { buildPivotRule, detectConversationPivot, getUserSignalLevel, normalizeConversationMessageResult, userTriggeredProfessionalTopic } from "@/lib/services/conversationMessageService";
+import { getConversationFeedbackSummary } from "@/lib/services/conversationFeedbackService";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -88,6 +89,11 @@ export async function POST(req: NextRequest) {
   }
 
   const scenarioBlock = buildTopicTintBlock(selectedScenario);
+  const feedbackSummary = await getConversationFeedbackSummary({
+    conversationId: body.conversationId,
+    agentSlug: body.agentSlug,
+  });
+  const feedbackBlock = feedbackSummary.promptBlock ? `\n\n${feedbackSummary.promptBlock}` : "";
 
   const studio = await buildStudioContext();
   const studioBlock = `\n\n${studio.conversational}`;
@@ -129,16 +135,18 @@ export async function POST(req: NextRequest) {
 
   const userAskedAboutWork = userTriggeredProfessionalTopic(userMessage);
   const userSignalLevel = getUserSignalLevel(userMessage);
+  const pivot = detectConversationPivot(userMessage);
 
   const studioRoleBlock = name.toLowerCase() === "eve"
     ? `\n\nTu es Eve. Meme si tu diriges le studio, ici vous pouvez parler comme deux personnes normales.`
     : `\n\nTu connais Romain via le studio, mais vous pouvez parler normalement sans revenir au travail.`;
 
   const coreRules = buildConversationCoreRules({ userAskedAboutWork, userSignalLevel });
+  const pivotRule = buildPivotRule(pivot);
 
   const systemPrompt = `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuances : ${personalityNuance}` : ""}.
-Backstory : ${backstory ?? "Tu fais partie de l'équipe."}${studioBlock}${studioRoleBlock}${relationBlock}${moodBlock}${memoryBlock}${personalBlock}${topicsBlock}${scenarioBlock}${timeBlock}
+  Backstory : ${backstory ?? "Tu fais partie de l'équipe."}${studioBlock}${studioRoleBlock}${relationBlock}${moodBlock}${memoryBlock}${personalBlock}${topicsBlock}${scenarioBlock}${feedbackBlock}${timeBlock}
 
 ${coreRules}
 Prefere une reponse simple, utile et plausible.
@@ -162,7 +170,7 @@ ${NO_DIDASCALIE_RULE}
 ${NO_UNSOLICITED_PITCH_RULE}
 ${TOPIC_DIVERSITY_RULE}
 ${PERSONAL_LIFE_RULE}
-${ANTI_HALLUCINATION_RULE}${antiRepeatBlock}`;
+${ANTI_HALLUCINATION_RULE}${antiRepeatBlock}${pivotRule}`;
 
   const history = (conversationHistory ?? []).slice(-20).map((m) => ({
     role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
@@ -197,15 +205,23 @@ ${ANTI_HALLUCINATION_RULE}${antiRepeatBlock}`;
   const data = await res.json();
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
-  message = normalizeConversationMessage(
+  const normalization = normalizeConversationMessageResult(
     message
       .replace(
         /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
         ""
       )
       .trim(),
-    { mode: "reply", userMessage }
+    {
+      mode: "reply",
+      userMessage,
+      agentName: name,
+      personalityPrimary,
+      personalityNuance,
+      blockedTopics: pivot.blockedTopics,
+    }
   );
+  message = normalization.message;
 
   // Increment confidence (+2 per exchange) and detect tier unlock
   let newConfidenceLevel: number | undefined;
@@ -220,13 +236,52 @@ ${ANTI_HALLUCINATION_RULE}${antiRepeatBlock}`;
     }
   }
 
+  const promptVariant = [
+    selectedScenario ? "topic-reservoir" : "standard-reply",
+    feedbackSummary.hasSignal ? "feedback" : null,
+    pivot.shouldPivot ? `pivot-${pivot.pivotStrength}` : null,
+  ]
+    .filter(Boolean)
+    .join("+");
+
   const messageMetadata = buildMessageMetadata(
-    selectedScenario
+    normalization.usedFallback
+      ? buildMessageTrace("reply", "fallback", {
+          scenarioId: selectedScenario?.id ?? null,
+          scenarioTitle: selectedScenario?.title ?? null,
+          promptVariant,
+          fallbackKey: normalization.fallbackKey,
+          pivotDetected: pivot.shouldPivot,
+          blockedTopics: pivot.blockedTopics,
+          feedbackSignal: {
+            hasSignal: feedbackSummary.hasSignal,
+            thumbsUpCount: feedbackSummary.thumbsUpCount,
+            thumbsDownCount: feedbackSummary.thumbsDownCount,
+          },
+        })
+      : selectedScenario
       ? buildMessageTrace("reply", "topic_reservoir", {
           scenarioId: selectedScenario.id,
           scenarioTitle: selectedScenario.title,
+          promptVariant,
+          pivotDetected: pivot.shouldPivot,
+          blockedTopics: pivot.blockedTopics,
+          feedbackSignal: {
+            hasSignal: feedbackSummary.hasSignal,
+            thumbsUpCount: feedbackSummary.thumbsUpCount,
+            thumbsDownCount: feedbackSummary.thumbsDownCount,
+          },
         })
-      : buildMessageTrace("reply", "standard_reply")
+      : buildMessageTrace("reply", "standard_reply", {
+          promptVariant,
+          pivotDetected: pivot.shouldPivot,
+          blockedTopics: pivot.blockedTopics,
+          feedbackSignal: {
+            hasSignal: feedbackSummary.hasSignal,
+            thumbsUpCount: feedbackSummary.thumbsUpCount,
+            thumbsDownCount: feedbackSummary.thumbsDownCount,
+          },
+        })
   );
 
   return NextResponse.json({

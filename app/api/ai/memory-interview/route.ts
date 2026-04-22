@@ -3,7 +3,9 @@ import { ANTI_HALLUCINATION_RULE, NO_DIDASCALIE_RULE, TEXTING_STYLE_RULE, EMOJI_
 import { buildConversationCoreRules } from "@/lib/prompts/conversationCore";
 import { buildStudioContext } from "@/lib/services/studioContextService";
 import { LLM_MODELS } from "@/lib/config/llm";
-import { getUserSignalLevel, normalizeConversationMessage } from "@/lib/services/conversationMessageService";
+import { buildPivotRule, detectConversationPivot, getUserSignalLevel, normalizeConversationMessageResult } from "@/lib/services/conversationMessageService";
+import { getConversationFeedbackSummary } from "@/lib/services/conversationFeedbackService";
+import { buildMessageMetadata, buildMessageTrace } from "@/lib/services/chatMetadata";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -24,6 +26,8 @@ export async function POST(req: NextRequest) {
     conversationHistory,
     userMessage,
     mode,
+    conversationId,
+    agentSlug,
   } = body as {
     name: string;
     role: string;
@@ -34,6 +38,8 @@ export async function POST(req: NextRequest) {
     conversationHistory?: { sender: string; content: string }[];
     userMessage?: string;
     mode?: "welcome" | "reply";
+    conversationId?: string;
+    agentSlug?: string;
   };
 
   if (!name || !personalityPrimary) {
@@ -52,16 +58,23 @@ export async function POST(req: NextRequest) {
   const emojiRule = EMOJI_RULES[personalityPrimary] ?? "1 émoji max.";
   const timeBlock = buildTimeContext();
   const userSignalLevel = getUserSignalLevel(userMessage);
+  const pivot = detectConversationPivot(userMessage);
+  const feedbackSummary = await getConversationFeedbackSummary({
+    conversationId,
+    agentSlug,
+  });
+  const feedbackBlock = feedbackSummary.promptBlock ? `\n\n${feedbackSummary.promptBlock}` : "";
   const coreRules = buildConversationCoreRules({
     userAskedAboutWork: Boolean(userMessage),
     allowLightQuestion: true,
     userSignalLevel,
   });
+  const pivotRule = buildPivotRule(pivot);
 
   const systemPrompt = isReply
     ? `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
-Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
+Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}${feedbackBlock}
 
 ${studio.conversational}
 
@@ -86,11 +99,11 @@ RÈGLES :
 - Tu tutoies ton boss.
 - 1 a 2 phrases courtes.
 - Tu parles comme quelqu'un de normal sur une messagerie.
-${TEXTING_STYLE_RULE}
+${TEXTING_STYLE_RULE}${pivotRule}
 ${NO_DIDASCALIE_RULE}${ANTI_HALLUCINATION_RULE}`
     : `Tu es ${name}, ${role ?? "membre de l'équipe"} au sein d'Eden Studio.
 Personnalité : ${personalityPrimary}${personalityNuance ? `, nuance ${personalityNuance}` : ""}.
-Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}
+  Background : ${backstory ?? "Tu fais partie de l'équipe."}${memoryBlock}${feedbackBlock}
 
 ${studio.conversational}
 
@@ -150,15 +163,44 @@ ${ANTI_HALLUCINATION_RULE}`;
   let message: string = data.choices?.[0]?.message?.content ?? "";
 
   // Filter out non-Latin characters
-  message = normalizeConversationMessage(
+  const normalization = normalizeConversationMessageResult(
     message
       .replace(
         /[^\u0000-\u024F\u1E00-\u1EFF\u2000-\u206F\u2190-\u21FF\u2600-\u27BF\uFE00-\uFE0F\u{1F300}-\u{1FAFF}]/gu,
         ""
       )
       .trim(),
-    { mode: "discovery", userMessage }
+    {
+      mode: "discovery",
+      userMessage,
+      agentName: name,
+      personalityPrimary,
+      personalityNuance,
+      blockedTopics: pivot.blockedTopics,
+    }
+  );
+  message = normalization.message;
+
+  const promptVariant = [
+    isReply ? "memory-interview-reply" : "memory-interview-opening",
+    feedbackSummary.hasSignal ? "feedback" : null,
+    pivot.shouldPivot ? `pivot-${pivot.pivotStrength}` : null,
+  ]
+    .filter(Boolean)
+    .join("+");
+  const messageMetadata = buildMessageMetadata(
+    buildMessageTrace("discovery", normalization.usedFallback ? "fallback" : "memory_interview", {
+      promptVariant,
+      fallbackKey: normalization.fallbackKey,
+      pivotDetected: pivot.shouldPivot,
+      blockedTopics: pivot.blockedTopics,
+      feedbackSignal: {
+        hasSignal: feedbackSummary.hasSignal,
+        thumbsUpCount: feedbackSummary.thumbsUpCount,
+        thumbsDownCount: feedbackSummary.thumbsDownCount,
+      },
+    })
   );
 
-  return NextResponse.json({ message });
+  return NextResponse.json({ message, messageMetadata });
 }
