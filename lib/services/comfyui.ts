@@ -26,6 +26,26 @@ const DEFAULT_NEGATIVE =
 const PIXEL_NEGATIVE =
   "blurry, low quality, watermark, text, photorealistic, 3D render, smooth shading, anti-aliased, gradient, noise, room interior, office scene, floor, wall, multiple objects, furniture set, open space, background environment, other furniture";
 
+function describeFetchFailure(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = typeof error.cause === "object" && error.cause !== null
+      ? (error.cause as { code?: string; message?: string })
+      : null;
+    const causeDetails = [cause?.code, cause?.message].filter(Boolean).join(" ");
+    return causeDetails ? `${error.message} (${causeDetails})` : error.message;
+  }
+
+  return "Unknown fetch error";
+}
+
+async function fetchWithContext(url: string, init: RequestInit, label: string): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw new Error(`${label} network error for ${url}: ${describeFetchFailure(error)}`);
+  }
+}
+
 export interface ComfyImageResult {
   buffer: Buffer;
   contentType: string;
@@ -49,15 +69,15 @@ export interface ComfyImg2ImgOptions extends ComfyPortraitOptions {
 // ── Upload init image to ComfyUI temp folder ──────────────────────────────────
 async function uploadInitImage(imageBuffer: Buffer): Promise<string> {
   const formData = new FormData();
-  const blob = new Blob([imageBuffer], { type: "image/png" });
+  const blob = new Blob([Uint8Array.from(imageBuffer)], { type: "image/png" });
   formData.append("image", blob, "init.png");
   formData.append("type", "input");
   formData.append("overwrite", "true");
 
-  const res = await fetch(`${COMFY_URL}/upload/image`, {
+  const res = await fetchWithContext(`${COMFY_URL}/upload/image`, {
     method: "POST",
     body: formData,
-  });
+  }, "ComfyUI /upload/image");
 
   if (!res.ok) {
     const body = await res.text();
@@ -191,11 +211,11 @@ function buildPixelArtWorkflow(opts: ComfyPortraitOptions): Record<string, unkno
 }
 
 async function queuePrompt(workflow: Record<string, unknown>): Promise<string> {
-  const res = await fetch(`${COMFY_URL}/prompt`, {
+  const res = await fetchWithContext(`${COMFY_URL}/prompt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: workflow }),
-  });
+  }, "ComfyUI /prompt");
 
   if (!res.ok) {
     const body = await res.text();
@@ -212,7 +232,7 @@ async function waitForResult(promptId: string): Promise<{ filename: string; subf
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
-    const res = await fetch(`${COMFY_URL}/history/${promptId}`);
+    const res = await fetchWithContext(`${COMFY_URL}/history/${promptId}`, {}, "ComfyUI /history");
     if (!res.ok) continue;
 
     const history = await res.json();
@@ -243,7 +263,7 @@ async function fetchOutputImage(filename: string, subfolder: string): Promise<Co
   url.searchParams.set("subfolder", subfolder);
   url.searchParams.set("type", "output");
 
-  const res = await fetch(url.toString());
+  const res = await fetchWithContext(url.toString(), {}, "ComfyUI /view");
   if (!res.ok) throw new Error(`ComfyUI /view error ${res.status}`);
 
   const arrayBuffer = await res.arrayBuffer();
@@ -275,12 +295,12 @@ async function sdTxt2Img(
     body.override_settings = { sd_model_checkpoint: overrideCheckpoint };
   }
 
-  const res = await fetch(url, {
+  const res = await fetchWithContext(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-  });
+  }, "SD WebUI txt2img");
 
   if (!res.ok) {
     const text = await res.text();
@@ -312,12 +332,12 @@ async function sdImg2Img(opts: ComfyImg2ImgOptions): Promise<ComfyImageResult> {
     body.override_settings = { sd_model_checkpoint: SD_CHECKPOINT };
   }
 
-  const res = await fetch(url, {
+  const res = await fetchWithContext(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-  });
+  }, "SD WebUI img2img");
 
   if (!res.ok) {
     const text = await res.text();
