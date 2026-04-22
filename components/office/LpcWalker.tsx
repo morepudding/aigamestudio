@@ -297,14 +297,14 @@ export function LpcAutoWalker({
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Convert legacy zoneBounds to zones array for backward compatibility
-  const effectiveZones = useMemo(() => {
+  const effectiveZones = useMemo<AgentZone[]>(() => {
     if (zones && zones.length > 0) {
       return zones;
     }
     if (zoneBounds) {
       return [{
-        id: 'legacy-zone',
-        bounds: { type: "rectangle", bounds: zoneBounds },
+        id: "legacy-zone",
+        bounds: { type: "rectangle" as const, bounds: zoneBounds },
         isExclusive: true,
         priority: 1,
       }];
