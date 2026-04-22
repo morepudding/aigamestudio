@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  AlertTriangle,
   Users,
   Code,
   PenTool,
@@ -11,12 +10,12 @@ import {
   MessageCircle,
   Settings,
   GraduationCap,
-  BookOpen,
   Puzzle,
   ExternalLink,
 } from "lucide-react";
 import PipelineView from "@/components/pipeline/PipelineView";
 import PostMortemView from "@/components/post-mortem/PostMortemView";
+import BriefBanner from "@/components/brainstorming/BriefBanner";
 
 const statusLabels: Record<string, string> = {
   concept: "Concept",
@@ -130,6 +129,14 @@ export default async function ProjectPage({
                   <span className="sm:hidden">Repo</span>
                 </a>
               )}
+            </div>
+
+            <div className="pt-2">
+              <BriefBanner
+                projectId={project.id}
+                projectTitle={project.title}
+                autoOpenIfIncomplete
+              />
             </div>
           </div>
         </div>

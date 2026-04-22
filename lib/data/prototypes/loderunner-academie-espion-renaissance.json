@@ -1,0 +1,21 @@
+{
+  "slug": "loderunner-academie-espion-renaissance",
+  "title": "Lode Runner: Galerie des Plans Voles",
+  "genre": ["plateforme", "labyrinthe", "espion-renaissance"],
+  "mechanics": ["course", "echelles", "collecte", "poursuite"],
+  "whatToReuse": [
+    "Map labyrinthe compacte avec routes alternatives",
+    "Collectibles clairs comme objectifs primaires",
+    "PNJ poursuivant par logique simple de proximite",
+    "Sortie deverrouillee une fois la collecte complete"
+  ],
+  "whatToAvoid": [
+    "Pathfinding avance non necessaire pour V1",
+    "Trop de pieges instant-kill",
+    "Niveaux proceduraux avant boucle stable"
+  ],
+  "playbookType": "platform-heist-lite",
+  "crewaiTag": "proto-loderunner-espion-renaissance",
+  "previewDescription": "Infiltre des galeries d archives, vole les plans puis echappe aux gardes ducale.",
+  "playable": false
+}

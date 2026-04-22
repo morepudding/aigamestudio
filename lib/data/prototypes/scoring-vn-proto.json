@@ -1,0 +1,21 @@
+{
+  "slug": "scoring-vn-proto",
+  "title": "Scoring VN Proto",
+  "genre": ["arcade", "integration-vn"],
+  "mechanics": ["timer", "score", "normalisation score", "postMessage"],
+  "whatToReuse": [
+    "Contrat d'evenement GAME_READY",
+    "Contrat d'evenement GAME_COMPLETED avec score et normalizedScore",
+    "HUD minimal pour score + timer",
+    "Boucle courte et deterministic pour tests d'integration"
+  ],
+  "whatToAvoid": [
+    "Dependance a une librairie externe lourde",
+    "Regles de scoring opaques",
+    "Evenements postMessage sans schema stable"
+  ],
+  "playbookType": "scoring-vn-lite",
+  "crewaiTag": "scoring-vn-proto-basic",
+  "previewDescription": "Proto de reference pour valider l'integration VN via postMessage.",
+  "playable": false
+}

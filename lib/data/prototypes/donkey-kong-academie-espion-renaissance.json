@@ -1,0 +1,22 @@
+{
+  "slug": "donkey-kong-academie-espion-renaissance",
+  "title": "Tour de la Sentinelle Heretique",
+  "genre": ["plateforme", "ecran-fixe", "espion-renaissance"],
+  "gameSummary": "Sur un ecran fixe en etages, le joueur grimpe des echelles et saute pour esquiver des obstacles roulants. Le but est de rejoindre le sommet de la tour avant de perdre toutes ses vies.",
+  "mechanics": ["echelles", "sauts", "obstacles roulants", "objectif sommet"],
+  "whatToReuse": [
+    "Level ecran fixe en etages avec echelles",
+    "Boucle evade et grimpe facile a prototyper",
+    "Obstacles spawnes par cadence predictable",
+    "Victoire basee sur atteinte du sommet"
+  ],
+  "whatToAvoid": [
+    "Multiples routes trop longues a debugger",
+    "Hitbox floues sur echelles",
+    "RNG excessive rendant l apprentissage confus"
+  ],
+  "playbookType": "platform-climb-lite",
+  "crewaiTag": "proto-donkeykong-espion-renaissance",
+  "previewDescription": "Un agent novice escalade une tour piegee pour recuperer des codes diplomatiques.",
+  "playable": false
+}

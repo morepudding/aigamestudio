@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { callOpenRouter, LLM_MODELS } from "@/lib/config/llm";
 import { DeckCardType, DeckTheme } from "@/lib/types/deck";
 import { getAvailableCards } from "@/lib/services/deckService";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const CARD_TYPES: DeckCardType[] = ["anecdote", "question", "relance", "reaction"];
 const ALL_THEMES: DeckTheme[] = [
@@ -36,6 +31,7 @@ function parseCard(raw: string) {
 // ── route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdminClient();
   const { agentSlug, cardType } = await req.json();
   if (!agentSlug) return NextResponse.json({ error: "agentSlug required" }, { status: 400 });
 

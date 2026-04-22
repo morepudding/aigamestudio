@@ -1,4 +1,8 @@
-import { createClient } from '@/lib/supabase/server';
+import {
+  getUsedScenarioIdsFromMetadata,
+  normalizeConversationMetadata,
+} from "@/lib/services/chatMetadata";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export interface ScenarioHistory {
   usedScenarioIds: number[];
@@ -9,7 +13,7 @@ export interface ScenarioHistory {
  * Récupère l'historique des scénarios utilisés pour une conversation
  */
 export async function getScenarioHistory(conversationId: string): Promise<ScenarioHistory> {
-  const supabase = await createClient();
+  const supabase = getSupabaseAdminClient();
   
   const { data: conversation } = await supabase
     .from('conversations')
@@ -21,10 +25,10 @@ export async function getScenarioHistory(conversationId: string): Promise<Scenar
     return { usedScenarioIds: [] };
   }
   
-  const metadata = conversation.metadata as any;
+  const metadata = normalizeConversationMetadata(conversation.metadata);
   return {
-    usedScenarioIds: metadata.usedScenarioIds || [],
-    lastScenarioAt: metadata.lastScenarioAt
+    usedScenarioIds: getUsedScenarioIdsFromMetadata(metadata),
+    lastScenarioAt: typeof metadata.lastScenarioAt === "number" ? metadata.lastScenarioAt : undefined,
   };
 }
 
@@ -35,7 +39,7 @@ export async function addScenarioToHistory(
   conversationId: string, 
   scenarioId: number
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getSupabaseAdminClient();
   
   // Récupérer l'historique actuel
   const history = await getScenarioHistory(conversationId);
@@ -71,7 +75,7 @@ export async function addScenarioToHistory(
  * Réinitialise l'historique des scénarios pour une conversation
  */
 export async function resetScenarioHistory(conversationId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = getSupabaseAdminClient();
   const { data: conversation } = await supabase
     .from('conversations')
     .select('metadata')

@@ -1,0 +1,21 @@
+{
+  "slug": "tetris-academie-espion-renaissance",
+  "title": "Tetris: Chiffres en Blocs",
+  "genre": ["puzzle", "arcade", "espion-renaissance"],
+  "mechanics": ["chute de blocs", "rotation", "lignes completes", "vitesse croissante"],
+  "whatToReuse": [
+    "Grille logique claire pour simulation et scoring",
+    "Systeme de lignes nettoyees tres mesurable",
+    "Difficulte progressive basee sur level speed",
+    "Boucle hautement rejouable pour telemetrie"
+  ],
+  "whatToAvoid": [
+    "Regles exotiques de pieces en V1",
+    "Mode histoire complexifiant le scope",
+    "Effets de particules degradant la lisibilite"
+  ],
+  "playbookType": "puzzle-stack-lite",
+  "crewaiTag": "proto-tetris-espion-renaissance",
+  "previewDescription": "Assemble des fragments de code chiffre en blocs pour debloquer des messages secrets.",
+  "playable": false
+}

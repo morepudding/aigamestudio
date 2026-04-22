@@ -13,7 +13,13 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { BrainstormingSession, OnePageComments, OnePageSection } from "@/lib/types/brainstorming";
+import BriefBanner from "@/components/brainstorming/BriefBanner";
+import {
+  isGameBriefComplete,
+  type BrainstormingSession,
+  type OnePageComments,
+  type OnePageSection,
+} from "@/lib/types/brainstorming";
 import type { Project } from "@/lib/types/project";
 
 // ============================================================
@@ -177,6 +183,7 @@ export default function BrainstormingPage() {
   const [error, setError] = useState<string | null>(null);
 
   const hasComments = Object.values(comments).some((c) => c && c.trim().length > 0);
+  const briefComplete = isGameBriefComplete(session?.gameBrief);
 
   useEffect(() => {
     async function init() {
@@ -206,6 +213,13 @@ export default function BrainstormingPage() {
   async function handleGenerate(action: "generate" | "regenerate") {
     setGenerating(true);
     setError(null);
+
+    if (!briefComplete) {
+      setGenerating(false);
+      setError("Complète d'abord le brief projet avant de générer le One Page.");
+      return;
+    }
+
     try {
       const res = await fetch(`/api/brainstorming/${projectId}/onepage`, {
         method: "POST",
@@ -265,6 +279,19 @@ export default function BrainstormingPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      <BriefBanner
+        projectId={projectId}
+        projectTitle={project?.title ?? projectId}
+        initialSession={session}
+        autoOpenIfIncomplete
+        className="mb-6"
+        onSessionSaved={(nextSession) => {
+          setSession(nextSession);
+          setOnePage(nextSession.onePage);
+          setComments(nextSession.onePageComments ?? {});
+        }}
+      />
+
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
@@ -281,18 +308,6 @@ export default function BrainstormingPage() {
             : "L'agent va générer le One Page à partir de ton brief."}
         </p>
       </div>
-
-      {/* Brief recap */}
-      {session?.gameBrief && (
-        <div className="mb-6 p-4 rounded-xl border border-white/8 bg-white/2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-          <span className="bg-white/8 px-2 py-1 rounded-md">{session.gameBrief.genre}</span>
-          <span className="bg-white/8 px-2 py-1 rounded-md">{session.gameBrief.sessionDuration}</span>
-          {session.gameBrief.referenceGame && (
-            <span className="bg-white/8 px-2 py-1 rounded-md">Réf: {session.gameBrief.referenceGame}</span>
-          )}
-          <span className="bg-white/8 px-2 py-1 rounded-md flex-1 min-w-0 truncate">{session.gameBrief.theme}</span>
-        </div>
-      )}
 
       {/* Error */}
       {error && (
@@ -315,12 +330,17 @@ export default function BrainstormingPage() {
           </div>
           <button
             onClick={() => handleGenerate("generate")}
-            disabled={generating}
+            disabled={generating || !briefComplete}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 font-semibold transition-all disabled:opacity-50"
           >
             {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {generating ? "Génération en cours…" : "Générer le One Page"}
           </button>
+          {!briefComplete && (
+            <p className="text-xs text-amber-300">
+              Complète le brief dans le bandeau ci-dessus avant le premier run.
+            </p>
+          )}
         </div>
       )}
 

@@ -1,0 +1,22 @@
+{
+  "slug": "pong-academie-espion-renaissance",
+  "title": "Pong: Duel d Espions a la Cour",
+  "genre": ["arcade", "duel", "espion-renaissance"],
+  "gameSummary": "Deux joueurs controlent chacun une barre verticale. Une balle rebondit entre les murs et les barres; si elle depasse ta barre, l adversaire marque un point. Le duel continue manche apres manche jusqu au score cible.",
+  "mechanics": ["raquette", "rebond", "zone de score", "duel 1v1"],
+  "whatToReuse": [
+    "Physique de balle simple avec angle de rebond selon impact",
+    "HUD score lisible et reset de manche rapide",
+    "Boucle de round courte parfaite pour prototype", 
+    "Parametres vitesse pour calibrage progression"
+  ],
+  "whatToAvoid": [
+    "Power-ups complexes en V1",
+    "Animation lourde bloquant la lisibilite",
+    "Multijoueur reseau avant validation du fun local"
+  ],
+  "playbookType": "arcade-duel-lite",
+  "crewaiTag": "proto-pong-espion-renaissance",
+  "previewDescription": "Deux apprentis espions s affrontent en salle d entrainement secrete, style Pong ultra simple.",
+  "playable": false
+}

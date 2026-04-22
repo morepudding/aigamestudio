@@ -1,0 +1,21 @@
+{
+  "slug": "stealth-proto",
+  "title": "Stealth Proto",
+  "genre": ["stealth"],
+  "mechanics": ["champ de vision", "detection", "objectif", "fail state"],
+  "whatToReuse": [
+    "Cone de vision raycast simple en canvas",
+    "Machine a etats garde: patrol -> alert -> chase",
+    "Feedback audio minimal sur detection",
+    "Score stealth-rating base sur detections"
+  ],
+  "whatToAvoid": [
+    "IA garde avec pathfinding complexe en V1",
+    "Plusieurs objectifs simultanes",
+    "Systeme d'inventaire avant la boucle de base"
+  ],
+  "playbookType": "stealth-lite",
+  "crewaiTag": "stealth-proto-basic",
+  "previewDescription": "Boucle stealth minimale: map, garde, objectif, detection, fail state.",
+  "playable": false
+}

@@ -1,0 +1,22 @@
+{
+  "slug": "breakout-academie-espion-renaissance",
+  "title": "Breakout: Mur des Archives Secretes",
+  "genre": ["arcade", "casse-briques", "espion-renaissance"],
+  "gameSummary": "Le joueur deplace une barre en bas de l ecran pour renvoyer une balle vers un mur de briques. Chaque impact detruit des briques et fait monter le score. Tu perds une vie si la balle passe sous la barre.",
+  "mechanics": ["raquette", "balle", "briques", "combo de destruction"],
+  "whatToReuse": [
+    "Pattern de niveaux avec briques destructibles par couche",
+    "Gestion collisions deterministe simple a tester",
+    "Compteur de briques restantes pour condition de victoire",
+    "Variation progressive de vitesse par niveau"
+  ],
+  "whatToAvoid": [
+    "Multiplication de types de briques des la V1",
+    "Systeme de boutique ou meta-progression",
+    "Effets visuels reduisant la lecture trajectoire"
+  ],
+  "playbookType": "arcade-break-lite",
+  "crewaiTag": "proto-breakout-espion-renaissance",
+  "previewDescription": "Brise un mur d archives cryptees avec une balle d entrainement dans l academie.",
+  "playable": false
+}

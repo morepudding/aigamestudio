@@ -50,6 +50,7 @@ const navLinks = [
   { href: "/", label: "Accueil", icon: Home },
   { href: "/review-assets", label: "Review Assets", icon: Sparkles },
   { href: "/projects", label: "Cours", icon: GraduationCap },
+  { href: "/proto", label: "Proto Lab", icon: Sparkles },
   { href: "/collaborateur", label: "Collaborateurs", icon: Users },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/eve", label: "Eve Workshop", icon: Bot },
@@ -59,6 +60,7 @@ const navLinks = [
 const mobileNavLinks = [
   { href: "/", label: "Home", icon: Home },
   { href: "/review-assets", label: "Review", icon: Sparkles },
+  { href: "/proto", label: "Proto", icon: Sparkles },
   { href: "/projects", label: "Cours", icon: GraduationCap },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/collaborateur", label: "Équipe", icon: Users },

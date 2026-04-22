@@ -1,0 +1,22 @@
+{
+  "slug": "mario-academie-espion-renaissance",
+  "title": "Course du Messager Royal",
+  "genre": ["plateforme", "side-scroller", "espion-renaissance"],
+  "gameSummary": "Le joueur avance de gauche a droite, saute entre des plateformes et evite des ennemis de patrouille. L objectif est d atteindre la fin du niveau sans tomber ni perdre toutes ses vies.",
+  "mechanics": ["saut", "plateformes", "ennemis de patrouille", "objectif de fin"],
+  "whatToReuse": [
+    "Controller de plateforme avec inertie legere",
+    "Tileset side-scroller simple et collisions stables",
+    "Collectibles optionnels pour score secondaire",
+    "Checkpoint unique de milieu de niveau"
+  ],
+  "whatToAvoid": [
+    "Map trop longue en prototype",
+    "Trop de types d ennemis simultanes",
+    "Scripts de narration interrompant la boucle"
+  ],
+  "playbookType": "platform-run-lite",
+  "crewaiTag": "proto-mario-espion-renaissance",
+  "previewDescription": "Un courrier espion traverse les toits de la cite pour livrer un pli chiffre.",
+  "playable": false
+}

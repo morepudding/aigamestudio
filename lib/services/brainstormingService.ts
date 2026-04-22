@@ -1,10 +1,12 @@
 import { supabase } from "@/lib/supabase/client";
+import { normalizeGameBrief } from "@/lib/types/brainstorming";
 import type {
   BrainstormingSession,
   BrainstormingMessage,
   BrainstormingPhase,
   CritiqueQuestion,
   GameBrief,
+  GameBriefExtended,
   OnePageComments,
 } from "@/lib/types/brainstorming";
 
@@ -18,7 +20,7 @@ type DbSession = {
   agent_slugs: string[];
   current_phase: string;
   phases_completed: string[];
-  game_brief: GameBrief | null;
+  game_brief: GameBriefExtended | GameBrief | null;
   one_page: string | null;
   one_page_comments: OnePageComments | null;
   one_page_validated: boolean;
@@ -52,7 +54,7 @@ function toSession(row: DbSession): BrainstormingSession {
     agentSlugs: row.agent_slugs ?? [],
     currentPhase: row.current_phase as BrainstormingPhase,
     phasesCompleted: (row.phases_completed ?? []) as BrainstormingPhase[],
-    gameBrief: row.game_brief,
+    gameBrief: normalizeGameBrief(row.game_brief),
     onePage: row.one_page,
     onePageComments: row.one_page_comments,
     onePageValidated: row.one_page_validated ?? false,
@@ -89,8 +91,10 @@ function toMessage(row: DbMessage): BrainstormingMessage {
 export async function createSession(
   projectId: string,
   agentSlugs: string[],
-  gameBrief?: GameBrief
+  gameBrief?: GameBrief | GameBriefExtended
 ): Promise<BrainstormingSession | null> {
+  const normalizedGameBrief = normalizeGameBrief(gameBrief);
+
   const { data, error } = await supabase
     .from("brainstorming_sessions")
     .insert({
@@ -98,7 +102,7 @@ export async function createSession(
       agent_slugs: agentSlugs,
       current_phase: "brief",
       phases_completed: [],
-      game_brief: gameBrief ?? null,
+      game_brief: normalizedGameBrief,
       gdd_finalized: false,
     })
     .select()
@@ -163,6 +167,16 @@ export async function updateSessionOnePage(
   await supabase
     .from("brainstorming_sessions")
     .update(dbFields)
+    .eq("id", sessionId);
+}
+
+export async function updateSessionGameBrief(
+  sessionId: string,
+  gameBrief: GameBrief | GameBriefExtended
+): Promise<void> {
+  await supabase
+    .from("brainstorming_sessions")
+    .update({ game_brief: normalizeGameBrief(gameBrief) })
     .eq("id", sessionId);
 }
 

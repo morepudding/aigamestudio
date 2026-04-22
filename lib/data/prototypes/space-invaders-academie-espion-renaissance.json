@@ -1,0 +1,22 @@
+{
+  "slug": "space-invaders-academie-espion-renaissance",
+  "title": "Invaders: Assaut sur l Observatoire",
+  "genre": ["arcade", "shoot-em-up", "espion-renaissance"],
+  "gameSummary": "Le joueur controle un canon en bas de l ecran et se deplace horizontalement pour tirer vers le haut. Des vagues d ennemis descendent progressivement; il faut les eliminer avant qu elles atteignent la zone basse.",
+  "mechanics": ["deplacement horizontal", "tir", "vagues", "abris destructibles"],
+  "whatToReuse": [
+    "Spawner de vagues synchronise avec cadence lisible",
+    "Progression de difficulte par acceleration des lignes",
+    "Gestion collisions projectile vs cible simple",
+    "Condition lose claire sur descente ennemie"
+  ],
+  "whatToAvoid": [
+    "Patterns bullet-hell en V1",
+    "Armes multiples sans balance",
+    "Camera dynamique inutile pour ce genre"
+  ],
+  "playbookType": "arcade-wave-lite",
+  "crewaiTag": "proto-invaders-espion-renaissance",
+  "previewDescription": "Defends l observatoire secret de l academie contre une vague d automates ennemis.",
+  "playable": false
+}

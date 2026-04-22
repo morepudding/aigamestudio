@@ -1,0 +1,21 @@
+{
+  "slug": "qbert-academie-espion-renaissance",
+  "title": "Q*bert: Pyramide des Serments",
+  "genre": ["arcade", "isometrique", "espion-renaissance"],
+  "mechanics": ["sauts diagonaux", "tuiles a activer", "evitement", "completude"],
+  "whatToReuse": [
+    "Niveau pyramidal simple avec objectif de conversion de tuiles",
+    "Systeme de saut case a case facile a tester",
+    "Gestion ennemis legers orientee timing",
+    "Scoring base sur progression de surface"
+  ],
+  "whatToAvoid": [
+    "Camera 3D complexe pour prototype 2D",
+    "Trop de variantes d ennemis des le depart",
+    "Raccourcis qui annulent le risque de navigation"
+  ],
+  "playbookType": "arcade-isometric-lite",
+  "crewaiTag": "proto-qbert-espion-renaissance",
+  "previewDescription": "Active chaque dalle d une pyramide d entrainement sans te faire attraper par les vigies.",
+  "playable": false
+}
