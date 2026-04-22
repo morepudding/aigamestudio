@@ -43,6 +43,9 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const getErrorMessage = (err: unknown, fallback: string) =>
+    err instanceof Error ? err.message : fallback;
+
   const handleApprove = async () => {
     if (!task) return;
     setApproving(true);
@@ -58,7 +61,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
     } catch (err) {
       console.error("Approval error:", err);
       // Show error to user (could integrate with a toast system)
-      alert(`Failed to approve task: ${err.message}`);
+      alert(`Failed to approve task: ${getErrorMessage(err, "Approval failed")}`);
     } finally {
       setApproving(false);
     }
@@ -79,7 +82,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
       onClose();
     } catch (err) {
       console.error("Delete error:", err);
-      alert(`Failed to delete deliverable: ${err.message}`);
+      alert(`Failed to delete deliverable: ${getErrorMessage(err, "Delete failed")}`);
     } finally {
       setDeleting(false);
     }
@@ -103,7 +106,7 @@ export default function TaskReview({ task, onClose }: TaskReviewProps) {
       onClose();
     } catch (err) {
       console.error("Rejection error:", err);
-      alert(`Failed to reject task: ${err.message}`);
+      alert(`Failed to reject task: ${getErrorMessage(err, "Rejection failed")}`);
     } finally {
       setRejecting(false);
     }
