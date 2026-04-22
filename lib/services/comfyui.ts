@@ -1,7 +1,8 @@
 /**
  * Image generation service.
- * - If SD_API_URL is set → uses Stable Diffusion WebUI (A1111) API (Cloudflare Tunnel or local)
- * - Otherwise → falls back to local ComfyUI (localhost:8188)
+ * - If SD_API_URL is set -> uses Stable Diffusion WebUI (A1111) API (Cloudflare Tunnel or local)
+ * - Otherwise -> uses ComfyUI when COMFYUI_URL is explicitly configured
+ * - Localhost fallback is only allowed during local development
  */
 
 // ── SD WebUI (A1111) ─────────────────────────────────────────────────────────
@@ -12,7 +13,10 @@ const SD_ISOMETRIC_LORA = process.env.SD_ISOMETRIC_LORA ?? "Isometric_Setting";
 const SD_ISOMETRIC_LORA_WEIGHT = process.env.SD_ISOMETRIC_LORA_WEIGHT ?? "0.7";
 
 // ── ComfyUI (local fallback) ──────────────────────────────────────────────────
-const COMFY_URL = process.env.COMFYUI_URL ?? "http://127.0.0.1:8188";
+const EXPLICIT_COMFY_URL = process.env.COMFYUI_URL?.trim().replace(/\/$/, "") || "";
+const DEFAULT_LOCAL_COMFY_URL = "http://127.0.0.1:8188";
+const IS_PRODUCTION_RUNTIME = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+const COMFY_URL = EXPLICIT_COMFY_URL || DEFAULT_LOCAL_COMFY_URL;
 const CHECKPOINT = process.env.COMFYUI_CHECKPOINT ?? "Realistic_Vision_V6.0_NV_B1.safetensors";
 const PIXEL_CHECKPOINT = process.env.COMFYUI_PIXEL_CHECKPOINT ?? "pixnite15PurePixel_v10.safetensors";
 const VAE_NAME = process.env.COMFYUI_VAE ?? "vae-ft-mse-840000-ema-pruned.safetensors";
@@ -43,6 +47,18 @@ async function fetchWithContext(url: string, init: RequestInit, label: string): 
     return await fetch(url, init);
   } catch (error) {
     throw new Error(`${label} network error for ${url}: ${describeFetchFailure(error)}`);
+  }
+}
+
+function ensureImageBackendConfigured(): void {
+  if (SD_API_URL || EXPLICIT_COMFY_URL) {
+    return;
+  }
+
+  if (IS_PRODUCTION_RUNTIME) {
+    throw new Error(
+      "Image generation is not configured for production: set SD_API_URL for your remote SD WebUI/Cloudflare tunnel or set COMFYUI_URL explicitly. Implicit localhost fallback is disabled outside local development."
+    );
   }
 }
 
@@ -353,6 +369,7 @@ async function sdImg2Img(opts: ComfyImg2ImgOptions): Promise<ComfyImageResult> {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function generateImageLocally(opts: ComfyPortraitOptions): Promise<ComfyImageResult> {
+  ensureImageBackendConfigured();
   if (SD_API_URL) return sdTxt2Img(opts, SD_CHECKPOINT);
   const workflow = buildPortraitWorkflow(opts);
   const promptId = await queuePrompt(workflow);
@@ -361,6 +378,7 @@ export async function generateImageLocally(opts: ComfyPortraitOptions): Promise<
 }
 
 export async function generateImg2ImgLocally(opts: ComfyImg2ImgOptions): Promise<ComfyImageResult> {
+  ensureImageBackendConfigured();
   if (SD_API_URL) return sdImg2Img(opts);
   const denoise = opts.denoise ?? 0.55;
   const initFilename = await uploadInitImage(opts.initImageBuffer);
@@ -371,6 +389,7 @@ export async function generateImg2ImgLocally(opts: ComfyImg2ImgOptions): Promise
 }
 
 export async function generatePixelArtLocally(opts: ComfyPortraitOptions): Promise<ComfyImageResult> {
+  ensureImageBackendConfigured();
   if (SD_API_URL) {
     return sdTxt2Img(
       { ...opts, negativePrompt: opts.negativePrompt ?? PIXEL_NEGATIVE },
